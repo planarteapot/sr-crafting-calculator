@@ -2,34 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>StarRupture Production Calculator</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
   <header>
     <h1>StarRupture Production Calculator</h1>
-    <p class="subtitle">Full-chain crafting & machine requirements</p>
+    <button id="darkModeToggle">🌙 Dark Mode</button>
   </header>
 
-  <section id="inputs">
-    <label for="itemSelect">Select item:</label>
+  <section id="controls">
+    <label for="itemSelect">Item:</label>
     <select id="itemSelect"></select>
 
-    <label for="rateInput">Target output per minute:</label>
-    <input type="number" id="rateInput" value="60" min="1" />
+    <label for="rateInput">Rate (/min):</label>
+    <input type="number" id="rateInput" value="60" min="0" step="1" />
 
     <button id="calcButton">Calculate</button>
   </section>
 
-  <section id="results">
-    <h2>Results</h2>
-    <div id="outputArea">Select an item and enter a rate to begin.</div>
+  <section id="outputArea"></section>
 
-    <!-- REQUIRED FOR BUNDLE 6 GRAPH VISUALIZER -->
-    <div id="graphArea" style="margin-top: 30px;"></div>
-  </section>
+  <section id="graphArea"></section>
 
   <script src="app.js"></script>
 </body>
