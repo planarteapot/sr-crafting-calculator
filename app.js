@@ -30,11 +30,6 @@ function getRecipe(item) {
   return RECIPES[item] || null;
 }
 
-// Determine if an item is raw (no recipe)
-function isRawResource(item) {
-  return !RECIPES[item] || !RECIPES[item].inputs || Object.keys(RECIPES[item].inputs).length === 0;
-}
-
 // Crafts per minute
 function craftsPerMinute(recipe) {
   return 60 / recipe.time;
@@ -55,24 +50,31 @@ function machinesNeeded(recipe, craftsPerMin) {
 // ===============================
 // Chain Expansion Logic
 // ===============================
-function expandChain(item, targetRate, chain = {}) {
+function expandChain(item, targetRate, chain = {}, depth = 0) {
   const recipe = getRecipe(item);
 
-  // Raw resource
+  // Raw resource (no recipe)
   if (!recipe) {
-    chain[item] = chain[item] || { rate: 0, raw: true };
+    chain[item] = chain[item] || {
+      rate: 0,
+      raw: true,
+      depth,
+      building: "RAW",
+      crafts: 0,
+      machines: 0,
+      inputs: {}
+    };
     chain[item].rate += targetRate;
     return chain;
   }
 
-  // Calculate crafts needed
   const opm = outputPerMinute(recipe);
   const craftsNeeded = targetRate / opm;
 
-  // Store item data
   chain[item] = chain[item] || {
     rate: 0,
     raw: false,
+    depth,
     building: recipe.building,
     crafts: 0,
     machines: 0,
@@ -83,13 +85,12 @@ function expandChain(item, targetRate, chain = {}) {
   chain[item].crafts += craftsNeeded;
   chain[item].machines += machinesNeeded(recipe, craftsNeeded);
 
-  // Expand inputs
   for (const [inputItem, inputAmount] of Object.entries(recipe.inputs)) {
     const inputRate = craftsNeeded * inputAmount;
 
     chain[item].inputs[inputItem] = (chain[item].inputs[inputItem] || 0) + inputRate;
 
-    expandChain(inputItem, inputRate, chain);
+    expandChain(inputItem, inputRate, chain, depth + 1);
   }
 
   return chain;
@@ -97,15 +98,133 @@ function expandChain(item, targetRate, chain = {}) {
 
 
 // ===============================
-// Render Results (TABLE VERSION)
+// Graph Data Construction
 // ===============================
-function renderResults(chain, rootItem, rate) {
+function buildGraphData(chain, rootItem) {
+  const nodes = [];
+  const links = [];
+
+  const nodeMap = new Map();
+
+  // Create nodes
+  for (const [item, data] of Object.entries(chain)) {
+    const node = {
+      id: item,
+      label: item,
+      depth: data.depth || 0,
+      raw: data.raw,
+      building: data.building,
+      rate: data.rate,
+      machines: data.machines
+    };
+    nodes.push(node);
+    nodeMap.set(item, node);
+  }
+
+  // Create links based on inputs
+  for (const [item, data] of Object.entries(chain)) {
+    if (!data.raw) {
+      for (const inputItem of Object.keys(data.inputs)) {
+        if (nodeMap.has(inputItem)) {
+          links.push({
+            from: item,
+            to: inputItem
+          });
+        }
+      }
+    }
+  }
+
+  return { nodes, links };
+}
+
+
+// ===============================
+// Graph Layout + SVG Rendering
+// ===============================
+function renderGraph(graphData, rootItem) {
+  const container = document.getElementById('graphArea');
+  if (!container) return;
+
+  const width = 900;
+  const rowHeight = 100;
+  const colWidth = 180;
+  const nodeRadius = 20;
+
+  const { nodes, links } = graphData;
+
+  // Group nodes by depth
+  const depthMap = new Map();
+  nodes.forEach(node => {
+    if (!depthMap.has(node.depth)) depthMap.set(node.depth, []);
+    depthMap.get(node.depth).push(node);
+  });
+
+  // Assign positions
+  depthMap.forEach((nodesAtDepth, depth) => {
+    const count = nodesAtDepth.length;
+    nodesAtDepth.forEach((node, index) => {
+      node.x = 100 + depth * colWidth;
+      node.y = 80 + index * rowHeight;
+    });
+  });
+
+  // Build SVG
+  let svg = `<svg width="${width}" height="${Math.max(300, nodes.length * rowHeight)}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Draw links
+  links.forEach(link => {
+    const fromNode = nodes.find(n => n.id === link.from);
+    const toNode = nodes.find(n => n.id === link.to);
+    if (!fromNode || !toNode) return;
+
+    svg += `
+      <line x1="${fromNode.x}" y1="${fromNode.y}" x2="${toNode.x}" y2="${toNode.y}"
+            stroke="#999" stroke-width="2" marker-end="url(#arrow)" />
+    `;
+  });
+
+  // Arrow marker
+  svg += `
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10" refX="10" refY="3" orient="auto" markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#999" />
+      </marker>
+    </defs>
+  `;
+
+  // Draw nodes
+  nodes.forEach(node => {
+    const fill = node.raw ? "#f4d03f" : "#3498db";
+    const stroke = node.id === rootItem ? "#e74c3c" : "#2c3e50";
+
+    svg += `
+      <g>
+        <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}" fill="${fill}" stroke="${stroke}" stroke-width="2" />
+        <text x="${node.x}" y="${node.y - 30}" text-anchor="middle" font-size="12" fill="#333">${node.label}</text>
+        <text x="${node.x}" y="${node.y + 4}" text-anchor="middle" font-size="10" fill="#fff">${node.rate.toFixed(1)}/m</text>
+        <text x="${node.x}" y="${node.y + 18}" text-anchor="middle" font-size="9" fill="#fff">${node.machines.toFixed(2)}x</text>
+      </g>
+    `;
+  });
+
+  svg += `</svg>`;
+
+  container.innerHTML = svg;
+}
+
+
+// ===============================
+// Table Render (kept alongside graph)
+// ===============================
+function renderTable(chain, rootItem, rate) {
   let html = `
     <h2>Production chain for ${rate} / min of ${rootItem}</h2>
     <table>
       <thead>
         <tr>
           <th>Item</th>
+          <th>Depth</th>
           <th>Rate (/min)</th>
           <th>Crafts (/min)</th>
           <th>Machines</th>
@@ -116,11 +235,20 @@ function renderResults(chain, rootItem, rate) {
       <tbody>
   `;
 
-  for (const [item, data] of Object.entries(chain)) {
+  // Sort by depth, then by name
+  const entries = Object.entries(chain).sort((a, b) => {
+    const da = a[1].depth || 0;
+    const db = b[1].depth || 0;
+    if (da !== db) return da - db;
+    return a[0].localeCompare(b[0]);
+  });
+
+  for (const [item, data] of entries) {
     if (data.raw) {
       html += `
         <tr>
           <td>${item}</td>
+          <td>${data.depth ?? 0}</td>
           <td>${data.rate.toFixed(2)}</td>
           <td>—</td>
           <td>—</td>
@@ -136,6 +264,7 @@ function renderResults(chain, rootItem, rate) {
       html += `
         <tr>
           <td>${item}</td>
+          <td>${data.depth ?? 0}</td>
           <td>${data.rate.toFixed(2)}</td>
           <td>${data.crafts.toFixed(2)}</td>
           <td>${data.machines.toFixed(2)}</td>
@@ -164,7 +293,12 @@ function runCalculator() {
 
   const chain = expandChain(item, rate);
 
-  renderResults(chain, item, rate);
+  // Table
+  renderTable(chain, item, rate);
+
+  // Graph
+  const graphData = buildGraphData(chain, item);
+  renderGraph(graphData, item);
 }
 
 
@@ -182,7 +316,6 @@ async function init() {
     itemSelect.appendChild(option);
   });
 
-  // Event listener for the button
   document.getElementById("calcButton").addEventListener("click", runCalculator);
 }
 
