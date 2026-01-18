@@ -155,10 +155,12 @@ function renderTable(chainObj, rootItem, rate) {
     .sort((a, b) => b - a);
 
   for (const tier of sortedTiers) {
-    html += `<tr><td colspan="7"><strong>--- Level ${tier} ---</strong></td></tr>`;
-    const rows = tierGroups[tier].sort((a, b) => a[0].localeCompare(b[0]));
+  html += `<tr><td colspan="7"><strong>--- Level ${tier} ---</strong></td></tr>`;
+  const rows = tierGroups[tier].sort((a, b) => a[0].localeCompare(b[0]));
 
   for (const [item, data] of rows) {
+    if (data.raw) continue; // ⛔ Skip RAW items
+
     let outputPerMachine = "—";
     let machines = "—";
     let railsNeeded = "—";
@@ -166,7 +168,7 @@ function renderTable(chainObj, rootItem, rate) {
     if (!data.raw) {
       const recipe = getRecipe(item);
       if (recipe) {
-        outputPerMachine = Math.ceil((recipe.output * 60) / recipe.time);
+        outputPerMachine = Math.ceil((recipe.output * 60) / recipe.time); // ✅ integer-safe formula
       }
       machines = Math.ceil(data.machines);
       railsNeeded = computeRailsNeeded(data.inputs, railSpeed);
