@@ -90,6 +90,20 @@ function expandChain(item, targetRate) {
     // If it's RAW (no recipe), count it immediately every time
     if (!recipe) {
       trackExtractor(name, rate);
+
+      // Add RAW node to chain if not already present
+      if (!chain[name]) {
+        chain[name] = {
+          rate,
+          raw: true,
+          building: "RAW",
+          machines: 0,
+          inputs: {}
+        };
+      } else {
+        chain[name].rate += rate;
+      }
+
       return;
     }
 
