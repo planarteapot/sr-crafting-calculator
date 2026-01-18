@@ -363,16 +363,8 @@ function renderGraph(graphData, rootItem) {
     const stroke = node.id === rootItem ? "#e74c3c" : "#2c3e50";
 
     svg += `
-      <g>
-        <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
-                fill="${fill}" stroke="${stroke}" stroke-width="2" />
-        <text x="${node.x}" y="${node.y - 30}"
-              text-anchor="middle" font-size="12">${node.label}</text>
-        <text x="${node.x}" y="${node.y + 4}"
-              text-anchor="middle" font-size="10">${Math.ceil(node.rate)}/m</text>
-        <text x="${node.x}" y="${node.y + 18}"
-              text-anchor="middle" font-size="9">${Math.ceil(node.machines)}x</text>
-      </g>
+      <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
+              fill="${fill}" stroke="${stroke}" stroke-width="2" />
     `;
   });
 
