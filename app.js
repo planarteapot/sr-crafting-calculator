@@ -469,21 +469,12 @@ function renderGraph(nodes, links, rootItem) {
 
     svg += `
       <g>
-
-        <!-- Label background -->
-        <rect x="${node.x - (node.label.length * 3)}"
-              y="${node.y - 42}"
-              width="${node.label.length * 6}"
-              height="16"
-              fill="${fillColor}"
-              rx="3" ry="3" />
-
-        <!-- Label text -->
+        <!-- Label text with halo -->
         <text x="${node.x}" y="${node.y - 30}"
               text-anchor="middle" font-size="12"
-              fill="${getTextColor(fillColor)}"
-              paint-order="stroke"
-              stroke="#000000" stroke-width="1">
+              fill="#ffffff"
+              stroke="#000000" stroke-width="2"
+              paint-order="stroke">
           ${node.label}
         </text>
 
@@ -497,15 +488,14 @@ function renderGraph(nodes, links, rootItem) {
                  fill="${fillColor}" rx="3" ry="3" />`
         )}
 
-        <!-- Machine count text -->
+        <!-- Machine count text with halo -->
         <text x="${node.x}" y="${node.y + 4}"
               text-anchor="middle" font-size="12"
               fill="#ffffff"
-              paint-order="stroke"
-              stroke="#000000" stroke-width="1">
+              stroke="#000000" stroke-width="2"
+              paint-order="stroke">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
-
       </g>
     `;
   }
