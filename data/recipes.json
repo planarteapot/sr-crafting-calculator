@@ -80,6 +80,17 @@
     "time": 2,
     "building": "Furnace"
   },
+  "Condenser": {
+    "inputs": {
+      "Resonator": 1,
+      "Synthetic Resin": 3,
+      "Nanofibre": 8,
+      "Pump": 3
+    },
+    "output": 1,
+    "time": 15,
+    "building": "Assembler"
+  },
   "Electromagnet": {
     "inputs": {
       "Electromagnetic Coil": 3,
@@ -199,6 +210,26 @@
     "time": 6,
     "building": "Mega Press"
   },
+  "Ion Injector": {
+    "inputs": {
+      "Applicator": 10,
+      "Electromagnet": 4,
+      "Pressure Tank": 2
+    },
+    "output": 1,
+    "time": 12,
+    "building": "Compounder"
+  },
+  "Laser Emitter": {
+    "inputs": {
+      "Lens": 2,
+      "Resonator": 1,
+      "Electromagnetic Coil": 6
+    },
+    "output": 1,
+    "time": 6,
+    "building": "Assembler"
+  },
   "Lens": {
     "inputs": {
       "Glass": 10,
@@ -237,6 +268,17 @@
     "time": 5,
     "building": "Mega Press"
   },
+  "Pressure Tank": {
+    "inputs": {
+      "Heat Resistant Sheet": 5,
+      "Titanium Housing": 3,
+      "Pump": 3,
+      "Valve": 2
+    },
+    "output": 1,
+    "time": 12,
+    "building": "Assembler"
+  },
   "Pressurized Helium": {
     "inputs": {
       "Helium-3": 1,
@@ -245,6 +287,27 @@
     "output": 1,
     "time": 2,
     "building": "Refinery"
+  },
+  "Pump": {
+    "inputs": {
+      "Valve": 1,
+      "Turbine": 1,
+      "Impeller": 1,
+      "Sulphuric Acid": 3
+    },
+    "output": 1,
+    "time": 0,
+    "building": "Mega Press"
+  },
+  "Resonator": {
+    "inputs": {
+      "Accumulator": 1,
+      "Generator": 2,
+      "Liquid Helium": 2
+    },
+    "output": 1,
+    "time": 12,
+    "building": "Assembler"
   },
   "Rotor": {
     "inputs": {
@@ -309,6 +372,16 @@
     "output": 1,
     "time": 0.5,
     "building": "Refinery"
+  },
+  "Superconductor": {
+    "inputs": {
+      "Ceramics": 7,
+      "Electromagnet": 2,
+      "Supermagnet": 8
+    },
+    "output": 1,
+    "time": 5,
+    "building": "Compounder"
   },
   "Supermagnet": {
     "inputs": {
@@ -472,6 +545,7 @@
     "Calcium Powder": 1,
     "Ceramics": 2,
     "Chemicals": 4,
+    "Condenser": 9,
     "Electromagnet": 8,
     "Electromagnetic Coil": 7,
     "Electronics": 4,
@@ -484,11 +558,16 @@
     "Impeller": 4,
     "Inductor": 3,
     "Intermediate Building Material": 4,
+    "Ion Injector": 9,
+    "Laser Emitter": 9,
     "Lens": 8,
     "Liquid Helium": 7,
     "Nanofibre": 8,
     "Nozzle": 4,
+    "Pressure Tank": 8,
     "Pressurized Helium": 1,
+    "Pump": 7,
+    "Resonator": 8,
     "Rotor": 2,
     "Scanner": 9,
     "Shotgun Ammo": 2,
@@ -496,6 +575,7 @@
     "Standard Ammo": 2,
     "Stator": 3,
     "Sulphuric Acid": 5,
+    "Superconductor": 9,
     "Supermagnet": 6,
     "Synthetic Resin": 7,
     "Synthetic Silicon": 3,
