@@ -469,9 +469,17 @@ function renderGraph(nodes, links, rootItem) {
 
     svg += `
       <g>
-        <text x="${node.x}" y="${node.y - 30}"
-              text-anchor="middle" font-size="12">${node.label}</text>
+        <!-- Background behind label -->
+        <rect x="${node.x - 40}" y="${node.y - 42}" width="80" height="16"
+              fill="#ffffff" rx="3" ry="3" />
 
+        <!-- Label text -->
+        <text x="${node.x}" y="${node.y - 30}"
+              text-anchor="middle" font-size="12" fill="#000000">
+          ${node.label}
+        </text>
+
+        <!-- Node circle -->
         <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
                 fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
 
