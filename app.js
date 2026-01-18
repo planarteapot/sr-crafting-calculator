@@ -243,7 +243,7 @@ function renderTable(chain, rootItem, rate) {
 
   const sortedTiers = Object.keys(tierGroups)
     .map(Number)
-    .sort((a, b) => a - b);
+    .sort((a, b) => b - a);
 
   for (const tier of sortedTiers) {
     html += `
