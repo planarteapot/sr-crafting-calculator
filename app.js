@@ -429,19 +429,6 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
-
-  // Create links from each item to its inputs
-  for (const [item, data] of Object.entries(chain)) {
-    for (const inputItem of Object.keys(data.inputs || {})) {
-      if (nodeMap.has(inputItem)) {
-        links.push({ from: item, to: inputItem });
-      }
-    }
-  }
-
-  return { nodes, links };
-}
-
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
 
@@ -531,8 +518,9 @@ function runCalculator() {
 
   renderTable(chainObj, item, rate);
 
-  const graphData = buildGraphData(chainObj.chain, item);
-  renderGraph(graphData, item);
+  const { nodes, links } = buildGraphData(chainObj.chain, item);
+  const graphSVG = renderGraph(nodes, links, item);
+  document.getElementById("graphArea").innerHTML = graphSVG;
 }
 
 // ===============================
