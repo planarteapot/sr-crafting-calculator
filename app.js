@@ -313,7 +313,6 @@ function renderGraph(graphData, rootItem) {
   const container = document.getElementById('graphArea');
   if (!container) return;
 
-  const width = 900;
   const rowHeight = 100;
   const colWidth = 180;
   const nodeRadius = 20;
@@ -333,7 +332,21 @@ function renderGraph(graphData, rootItem) {
     });
   });
 
-  let svg = `<svg width="${width}" height="${Math.max(300, nodes.length * rowHeight)}" xmlns="http://www.w3.org/2000/svg">`;
+  const maxDepth = Math.max(...nodes.map(n => n.depth));
+  const width = 100 + (maxDepth + 1) * colWidth;
+  const height = Math.max(300, nodes.length * rowHeight);
+
+  let svg = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
+
+  svg += `
+    <defs>
+      <marker id="arrow" markerWidth="10" markerHeight="10"
+              refX="10" refY="3" orient="auto"
+              markerUnits="strokeWidth">
+        <path d="M0,0 L0,6 L9,3 z" fill="#999" />
+      </marker>
+    </defs>
+  `;
 
   links.forEach(link => {
     const fromNode = nodes.find(n => n.id === link.from);
@@ -347,16 +360,6 @@ function renderGraph(graphData, rootItem) {
             marker-end="url(#arrow)" />
     `;
   });
-
-  svg += `
-    <defs>
-      <marker id="arrow" markerWidth="10" markerHeight="10"
-              refX="10" refY="3" orient="auto"
-              markerUnits="strokeWidth">
-        <path d="M0,0 L0,6 L9,3 z" fill="#999" />
-      </marker>
-    </defs>
-  `;
 
   nodes.forEach(node => {
     const fill = node.raw ? "#f4d03f" : "#3498db";
