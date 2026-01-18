@@ -475,15 +475,18 @@ function renderGraph(nodes, links, rootItem) {
         <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
                 fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
 
-        <rect x="${node.x - 12}" y="${node.y - 8}" width="24" height="16"
+        <!-- Background behind machine count -->
+        ${node.raw ? "" : `
+          <rect x="${node.x - 12}" y="${node.y - 8}" width="24" height="16"
                 fill="${fillColor}" rx="3" ry="3" />
+        `}
 
+        <!-- Machine count text -->
         <text x="${node.x}" y="${node.y + 4}"
-                text-anchor="middle" font-size="12"
-                fill="${textColor}">
+              text-anchor="middle" font-size="12"
+              fill="${textColor}">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
-
       </g>
     `;
   }
