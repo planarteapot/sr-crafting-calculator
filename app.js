@@ -22,7 +22,8 @@ async function loadRecipes() {
   }
 }
 
-let RECIPES = {}; // Global storage
+let RECIPES = {};     // All recipe data
+let TIERS = {};       // Tier map from spreadsheet
 
 
 // ===============================
@@ -32,7 +33,9 @@ const MACHINE_SPEED = {
   "Smelter": 1.0,
   "Fabricator": 1.0,
   "Assembler": 1.0,
-  "Furnace": 1.0
+  "Furnace": 1.0,
+  "Mega Press": 1.0,
+  "Refinery": 1.0
 };
 
 
@@ -60,14 +63,14 @@ function machinesNeeded(recipe, craftsPerMin) {
 // ===============================
 // Chain Expansion Logic
 // ===============================
-function expandChain(item, targetRate, chain = {}, depth = 0) {
+function expandChain(item, targetRate, chain = {}) {
   const recipe = getRecipe(item);
 
+  // Raw resource
   if (!recipe) {
     chain[item] = chain[item] || {
       rate: 0,
       raw: true,
-      depth,
       building: "RAW",
       crafts: 0,
       machines: 0,
@@ -83,7 +86,6 @@ function expandChain(item, targetRate, chain = {}, depth = 0) {
   chain[item] = chain[item] || {
     rate: 0,
     raw: false,
-    depth,
     building: recipe.building,
     crafts: 0,
     machines: 0,
@@ -100,7 +102,7 @@ function expandChain(item, targetRate, chain = {}, depth = 0) {
     chain[item].inputs[inputItem] =
       (chain[item].inputs[inputItem] || 0) + inputRate;
 
-    expandChain(inputItem, inputRate, chain, depth + 1);
+    expandChain(inputItem, inputRate, chain);
   }
 
   return chain;
@@ -120,7 +122,7 @@ function buildGraphData(chain, rootItem) {
     const node = {
       id: item,
       label: item,
-      depth: data.depth || 0,
+      depth: TIERS[item] ?? 0,
       raw: data.raw,
       building: data.building,
       rate: data.rate,
@@ -212,7 +214,7 @@ function renderGraph(graphData, rootItem) {
 
 
 // ===============================
-// Table Rendering
+// Table Rendering (Tier-Based)
 // ===============================
 function renderTable(chain, rootItem, rate) {
   let html = `
@@ -231,24 +233,24 @@ function renderTable(chain, rootItem, rate) {
       <tbody>
   `;
 
-  // Group items by depth
-  const depthGroups = {};
+  // Group by tier
+  const tierGroups = {};
   for (const [item, data] of Object.entries(chain)) {
-    const depth = data.depth ?? 0;
-    if (!depthGroups[depth]) depthGroups[depth] = [];
-    depthGroups[depth].push([item, data]);
+    const tier = TIERS[item] ?? 0;
+    if (!tierGroups[tier]) tierGroups[tier] = [];
+    tierGroups[tier].push([item, data]);
   }
 
-  const sortedDepths = Object.keys(depthGroups)
+  const sortedTiers = Object.keys(tierGroups)
     .map(Number)
     .sort((a, b) => a - b);
 
-  for (const depth of sortedDepths) {
+  for (const tier of sortedTiers) {
     html += `
-      <tr><td colspan="6"><strong>--- Level ${depth} ---</strong></td></tr>
+      <tr><td colspan="6"><strong>--- Level ${tier} ---</strong></td></tr>
     `;
 
-    const rows = depthGroups[depth].sort((a, b) => a[0].localeCompare(b[0]));
+    const rows = tierGroups[tier].sort((a, b) => a[0].localeCompare(b[0]));
 
     for (const [item, data] of rows) {
       if (data.raw) {
@@ -334,15 +336,20 @@ function setupDarkMode() {
 async function init() {
   setupDarkMode();
 
-  RECIPES = await loadRecipes();
+  const data = await loadRecipes();
+  RECIPES = data;
+  TIERS = data._tiers || {};
 
   const itemSelect = document.getElementById('itemSelect');
-  Object.keys(RECIPES).forEach(item => {
-    const option = document.createElement('option');
-    option.value = item;
-    option.textContent = item;
-    itemSelect.appendChild(option);
-  });
+  Object.keys(RECIPES)
+    .filter(k => k !== "_tiers")
+    .sort()
+    .forEach(item => {
+      const option = document.createElement('option');
+      option.value = item;
+      option.textContent = item;
+      itemSelect.appendChild(option);
+    });
 
   document.getElementById("calcButton").addEventListener("click", runCalculator);
 }
