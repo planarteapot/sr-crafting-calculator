@@ -419,6 +419,11 @@ function renderTable(chainObj, rootItem, rate) {
 // ===============================
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
+  // Detect theme for adaptive halo text
+  const isDark = document.body.classList.contains("dark-mode");
+
+  const labelFill = isDark ? "#ffffff" : "#000000";   // text color
+  const labelStroke = isDark ? "#000000" : "#ffffff"; // halo outline
 
   const columns = {};
   for (const node of nodes) {
@@ -472,8 +477,8 @@ function renderGraph(nodes, links, rootItem) {
         <!-- Label text with halo -->
         <text x="${node.x}" y="${node.y - 30}"
               text-anchor="middle" font-size="12"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="2"
+              fill="${labelFill}"
+              stroke="${labelStroke}" stroke-width="2"
               paint-order="stroke">
           ${node.label}
         </text>
@@ -491,8 +496,8 @@ function renderGraph(nodes, links, rootItem) {
         <!-- Machine count text with halo -->
         <text x="${node.x}" y="${node.y + 4}"
               text-anchor="middle" font-size="12"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="2"
+              fill="${labelFill}"
+              stroke="${labelStroke}" stroke-width="2"
               paint-order="stroke">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
