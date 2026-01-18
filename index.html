@@ -20,6 +20,13 @@
     <label for="rateInput">Rate (/min):</label>
     <input type="number" id="rateInput" value="60" min="0" step="1" />
 
+    <label for="railSelect">Rail Type:</label>
+    <select id="railSelect">
+      <option value="120">v1 (120/min)</option>
+      <option value="240" selected>v2 (240/min)</option>
+      <option value="480">v3 (480/min)</option>
+    </select>
+
     <button id="calcButton">Calculate</button>
   </section>
 
