@@ -396,28 +396,38 @@ html += `</tbody></table>`;
 // Graph Rendering
 // ===============================
 function buildGraphData(chain, rootItem) {
+  const depths = computeDepths(chain, rootItem);
   const nodes = [];
   const links = [];
   const nodeMap = new Map();
 
-  // Define special RAW materials that use unique extractors
-  const SPECIAL_EXTRACTORS = ["Sulphur Ore", "Helium-3"];
-
-  // Create nodes for all crafted items in the chain
   for (const [item, data] of Object.entries(chain)) {
+    const depth = depths[item] ?? 0;
+
     const node = {
       id: item,
       label: item,
-      depth: TIERS[item] ?? 0,
+      depth,
       raw: data.raw,
-      special: SPECIAL_EXTRACTORS.includes(item),
       building: data.building,
-      rate: data.rate,
-      machines: data.machines
+      machines: data.machines,
+      inputs: data.inputs
     };
+
     nodes.push(node);
     nodeMap.set(item, node);
   }
+
+  for (const [item, data] of Object.entries(chain)) {
+    for (const input of Object.keys(data.inputs || {})) {
+      if (nodeMap.has(input)) {
+        links.push({ from: item, to: input });
+      }
+    }
+  }
+
+  return { nodes, links };
+}
 
   // Add RAW nodes that appear only as inputs
   for (const [item, data] of Object.entries(chain)) {
