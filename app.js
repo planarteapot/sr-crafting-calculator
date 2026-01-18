@@ -19,6 +19,25 @@ async function loadRecipes() {
 let RECIPES = {};
 let TIERS = {};
 
+function getTextColor(bg) {
+  const r = parseInt(bg.substr(1, 2), 16);
+  const g = parseInt(bg.substr(3, 2), 16);
+  const b = parseInt(bg.substr(5, 2), 16);
+  const luminance = (0.299*r + 0.587*g + 0.114*b);
+  return luminance > 150 ? "#000000" : "#ffffff";
+}
+
+const MACHINE_COLORS = {
+  "Smelter": "#3498db",
+  "Fabricator": "#9b59b6",
+  "Furnace": "#e67e22",
+  "Mega Press": "#c0392b",
+  "Assembler": "#1abc9c",
+  "Refinery": "#16a085",
+  "Pyro Forge": "#d35400",
+  "Compounder": "#8e44ad"
+};
+
 const MACHINE_SPEED = {
   "Smelter": 1.0,
   "Fabricator": 1.0,
@@ -116,12 +135,91 @@ function expandChain(item, targetRate) {
   return { chain, machineTotals, extractorTotals };
 }
 
+function computeDepths(chain, rootItem) {
+  const consumers = {};
+  const depths = {};
+
+  for (const [item, data] of Object.entries(chain)) {
+    for (const input of Object.keys(data.inputs || {})) {
+      if (!consumers[input]) consumers[input] = [];
+      consumers[input].push(item);
+    }
+  }
+
+  depths[rootItem] = 999;
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+
+    for (const item of Object.keys(chain)) {
+      const cons = consumers[item];
+      if (!cons || cons.length === 0) continue;
+
+      const minConsumerDepth = Math.min(
+        ...cons.map(c => depths[c] ?? 999)
+      );
+
+      const newDepth = minConsumerDepth - 1;
+
+      if (depths[item] !== newDepth) {
+        depths[item] = newDepth;
+        changed = true;
+      }
+    }
+  }
+
+  const minDepth = Math.min(...Object.values(depths));
+  for (const item of Object.keys(depths)) {
+    depths[item] -= minDepth;
+  }
+
+  return depths;
+}
+
+function buildGraphData(chain, rootItem) {
+  const depths = computeDepths(chain, rootItem);
+  const nodes = [];
+  const links = [];
+  const nodeMap = new Map();
+
+  for (const [item, data] of Object.entries(chain)) {
+    const depth = depths[item] ?? 0;
+
+    const node = {
+      id: item,
+      label: item,
+      depth,
+      raw: data.raw,
+      building: data.building,
+      machines: data.machines,
+      inputs: data.inputs
+    };
+
+    nodes.push(node);
+    nodeMap.set(item, node);
+  }
+
+  for (const [item, data] of Object.entries(chain)) {
+    for (const input of Object.keys(data.inputs || {})) {
+      if (nodeMap.has(input)) {
+        links.push({ from: item, to: input });
+      }
+    }
+  }
+
+  return { nodes, links };
+}
+
 
 // ===============================
 // Table Rendering
 // ===============================
 function renderTable(chainObj, rootItem, rate) {
   const { chain, machineTotals, extractorTotals } = chainObj;
+  const { nodes, links } = buildGraphData(chain, rootItem);
+  const graphSVG = renderGraph(nodes, links, rootItem);
+  document.getElementById("graphArea").innerHTML = graphSVG;
   const railSpeed = parseInt(document.getElementById("railSelect").value);
 
   let html = `
@@ -333,74 +431,68 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
-function renderGraph(graphData, rootItem) {
-  const container = document.getElementById('graphArea');
-  if (!container) return;
+function renderGraph(nodes, links, rootItem) {
+  const nodeRadius = 22;
 
-  const rowHeight = 100;
-  const colWidth = 180;
-  const nodeRadius = 20;
+  const columns = {};
+  for (const node of nodes) {
+    if (!columns[node.depth]) columns[node.depth] = [];
+    columns[node.depth].push(node);
+  }
 
-  const { nodes, links } = graphData;
+  const colWidth = 200;
+  const rowHeight = 90;
 
-  const depthMap = new Map();
-  nodes.forEach(node => {
-    if (!depthMap.has(node.depth)) depthMap.set(node.depth, []);
-    depthMap.get(node.depth).push(node);
-  });
-
-  depthMap.forEach((nodesAtDepth, depth) => {
-    nodesAtDepth.forEach((node, index) => {
-      node.x = 100 + depth * colWidth;
-      node.y = 80 + index * rowHeight;
+  for (const [depth, colNodes] of Object.entries(columns)) {
+    colNodes.forEach((node, i) => {
+      node.x = depth * colWidth + 100;
+      node.y = i * rowHeight + 100;
     });
-  });
+  }
 
-  const maxDepth = Math.max(...nodes.map(n => n.depth));
-  const width = 100 + (maxDepth + 1) * colWidth;
-  const height = Math.max(300, nodes.length * rowHeight);
+  let svg = `<svg width="2000" height="2000" xmlns="http://www.w3.org/2000/svg">`;
 
-  let svg = `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`;
-
-  svg += `
-    <defs>
-      <marker id="arrow" markerWidth="10" markerHeight="10"
-              refX="10" refY="3" orient="auto"
-              markerUnits="strokeWidth">
-        <path d="M0,0 L0,6 L9,3 z" fill="#999" />
-      </marker>
-    </defs>
-  `;
-
-  links.forEach(link => {
-    const fromNode = nodes.find(n => n.id === link.from);
-    const toNode = nodes.find(n => n.id === link.to);
-    if (!fromNode || !toNode) return;
+  for (const link of links) {
+    const from = nodes.find(n => n.id === link.from);
+    const to = nodes.find(n => n.id === link.to);
 
     svg += `
-      <line x1="${fromNode.x}" y1="${fromNode.y}"
-            x2="${toNode.x}" y2="${toNode.y}"
-            stroke="#999" stroke-width="2"
-            marker-end="url(#arrow)" />
+      <line x1="${from.x}" y1="${from.y}"
+            x2="${to.x}" y2="${to.y}"
+            stroke="#999" stroke-width="2" />
     `;
-  });
+  }
 
-  nodes.forEach(node => {
-  const fill = node.raw ? "#f4d03f" : "#3498db";
-  const stroke = node.id === rootItem ? "#e74c3c" : "#2c3e50";
+  for (const node of nodes) {
+    const fillColor = node.raw
+      ? "#f4d03f"
+      : MACHINE_COLORS[node.building] || "#95a5a6";
 
-  svg += `
-    <g>
-      <text x="${node.x}" y="${node.y - 30}"
-            text-anchor="middle" font-size="12">${node.label}</text>
-      <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
-              fill="${fill}" stroke="${stroke}" stroke-width="2" />
-    </g>
-  `;
-});
+    const strokeColor = node.id === rootItem
+      ? "#27ae60"
+      : "#2c3e50";
+
+    const textColor = getTextColor(fillColor);
+
+    svg += `
+      <g>
+        <text x="${node.x}" y="${node.y - 30}"
+              text-anchor="middle" font-size="12">${node.label}</text>
+
+        <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
+                fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
+
+        <text x="${node.x}" y="${node.y + 4}"
+              text-anchor="middle" font-size="12"
+              fill="${textColor}">
+          ${node.raw ? "" : Math.ceil(node.machines)}
+        </text>
+      </g>
+    `;
+  }
 
   svg += `</svg>`;
-  container.innerHTML = svg;
+  return svg;
 }
 
 
