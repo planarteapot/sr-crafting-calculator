@@ -471,12 +471,13 @@ function renderGraph(nodes, links, rootItem) {
       <g>
         <!-- Background behind label -->
         <rect x="${node.x - (node.label.length * 3)}" y="${node.y - 42}"
-              width="${node.label.length * 6}" height="16"
-              fill="rgba(0,0,0,0.6)" rx="3" ry="3" />
+          width="${node.label.length * 6}" height="16"
+          fill="${fillColor}" rx="3" ry="3" />
 
         <!-- Label text -->
         <text x="${node.x}" y="${node.y - 30}"
-              text-anchor="middle" font-size="12" fill="#ffffff">
+              text-anchor="middle" font-size="12"
+              fill="${getTextColor(fillColor)}">
           ${node.label}
         </text>
 
