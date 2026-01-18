@@ -1,7 +1,27 @@
 {
-  "example": {
-    "inputs": [],
+  "Basic Building Material": {
+    "inputs": {
+      "Glass": 2,
+      "Tube": 1
+    },
     "output": 1,
-    "time": 1
+    "time": 2,
+    "building": "Fabricator"
+  },
+  "Glass": {
+    "inputs": {
+      "Silica": 3
+    },
+    "output": 1,
+    "time": 1,
+    "building": "Smelter"
+  },
+  "Tube": {
+    "inputs": {
+      "Titanium Rod": 2
+    },
+    "output": 1,
+    "time": 1,
+    "building": "Fabricator"
   }
 }
