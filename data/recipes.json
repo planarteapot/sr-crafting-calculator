@@ -1,4 +1,14 @@
 {
+  "Accumulator": {
+    "inputs": {
+      "Electronics": 2,
+      "Stator": 1,
+      "Battery": 2
+    },
+    "output": 1,
+    "time": 6,
+    "building": "Assembler"
+  },
   "Applicator": {
     "inputs": {
       "Tube": 8,
@@ -16,6 +26,16 @@
     "output": 10,
     "time": 2,
     "building": "Fabricator"
+  },
+  "Battery": {
+    "inputs": {
+      "Inductor": 2,
+      "Electronics": 2,
+      "Sulphuric Acid": 1
+    },
+    "output": 1,
+    "time": 4,
+    "building": "Mega Press"
   },
   "Calcite Sheets": {
     "inputs": {
@@ -59,6 +79,16 @@
     "output": 2,
     "time": 2,
     "building": "Furnace"
+  },
+  "Electromagnet": {
+    "inputs": {
+      "Electromagnetic Coil": 3,
+      "Synthetic Resin": 3,
+      "Accumulator": 2
+    },
+    "output": 1,
+    "time": 5,
+    "building": "Assembler"
   },
   "Electromagnetic Coil": {
     "inputs": {
@@ -424,13 +454,16 @@
     "building": "Fabricator"
   },
   "_tiers": {
+    "Accumulator": 7,
     "Applicator": 3,
     "Basic Building Material": 1,
+    "Battery": 6,
     "Calcite Sheets": 1,
     "Calcium Block": 0,
     "Calcium Powder": 1,
     "Ceramics": 2,
     "Chemicals": 4,
+    "Electromagnet": 8,
     "Electromagnetic Coil": 7,
     "Electronics": 4,
     "Glass": 2,
