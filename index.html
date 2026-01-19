@@ -1,23 +1,41 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="icon" href="SRCC Icon.png" type="image/png">
   <meta charset="UTF-8" />
   <title>StarRupture Crafting Calculator</title>
+
+  <!-- Favicon -->
+  <link rel="icon" href="data/SRCC_Icon.png" type="image/png">
+
+  <!-- Stylesheet -->
   <link rel="stylesheet" href="style.css" />
 </head>
 
 <body>
 
+  <!-- ============================
+       NEW RESPONSIVE HEADER
+  ============================= -->
   <header>
+    <!-- Banner image that scales with width -->
+    <img id="headerBanner" src="data/raptura-banner.png" alt="Raptura Banner" />
+
+    <!-- Logo -->
     <div id="logoBox">
       <img src="data/starrupture.png" alt="Logo" id="siteLogo" />
     </div>
-    <h1>StarRupture Crafting Calculator</h1>
+
+    <!-- Title Image -->
+    <div id="titleBox">
+      <img src="data/SRCC_Logo.png" alt="StarRupture Crafting Calculator" id="siteTitleImage" />
+    </div>
+
+    <!-- Dark Mode Toggle -->
     <button id="darkModeToggle">🌙 Dark Mode</button>
   </header>
 
-  <!-- ⭐ Download Offline moved here -->
+
+  <!-- ⭐ Download Offline -->
   <section id="downloadOffline" style="text-align:center; margin:40px 0;">
     <a href="https://docs.google.com/spreadsheets/d/1yhyF4NxQbiEYIboEisqoxD_YTs9TPU8eE5EuXaqkKps/copy"
        target="_blank"
@@ -27,6 +45,10 @@
     </a>
   </section>
 
+
+  <!-- ============================
+       CONTROLS (unchanged)
+  ============================= -->
   <section id="controls">
     <label for="itemSelect">Item:</label>
     <select id="itemSelect"></select>
@@ -42,13 +64,23 @@
     </select>
 
     <button id="calcButton">Calculate</button>
+
+    <button id="shareButton">Share</button>
   </section>
 
-  <section id="outputArea"></section>
 
+  <!-- ============================
+       OUTPUT + GRAPH (unchanged)
+  ============================= -->
+  <section id="outputArea"></section>
   <section id="graphArea"></section>
 
+
+  <!-- ============================
+       MAIN SCRIPT
+  ============================= -->
   <script src="app.js"></script>
+
 
   <!-- ⭐ Ko-fi Floating Support Button -->
   <script src="https://storage.ko-fi.com/cdn/scripts/overlay-widget.js"></script>
@@ -60,6 +92,8 @@
       'floating-chat.donateButton.text-color': '#fff'
     });
   </script>
+
+  <div id="toastContainer"></div>
 
 </body>
 </html>
