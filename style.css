@@ -10,50 +10,78 @@ body {
 }
 
 /* ============================
-   HEADER WITH BANNER BACKDROP
+   HEADER WITH RESPONSIVE BANNER
 ============================ */
 header {
   position: relative;
   overflow: hidden;
+  width: 100%;
 }
 
 /* Banner image that scales with width */
 #headerBanner {
   width: 100%;
   height: auto;
+  max-height: 160px; /* target height */
   display: block;
-
-  /* Default height target */
-  max-height: 160px;
 }
 
-/* Overlay content */
+/* Overlay content (logo, title, toggle) */
 header > *:not(#headerBanner) {
   position: absolute;
   z-index: 2;
 }
 
-/* Positioning your elements */
-#logoBox {
+/* Logo box */
+#logoBox { 
   top: 50%;
   left: 20px;
   transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.55);
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: inline-flex; 
+  align-items: center; 
+  justify-content: center;
+  border: 1px solid rgba(255,255,255,0.25);
 }
 
+#siteLogo { 
+  height: 50px; 
+  width: auto; 
+  display: block;
+}
+
+/* Title image */
 #titleBox {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
 }
 
+#titleBox img {
+  height: 60px;
+  object-fit: contain;
+}
+
+/* Dark mode toggle */
 #darkModeToggle {
   top: 50%;
   right: 20px;
   transform: translateY(-50%);
+  padding: 6px 12px;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: #ddd;
+  transition: background 0.3s;
+}
+
+#darkModeToggle:hover {
+  background: #ccc;
 }
 
 /* ============================
-   CONTROLS
+   Controls
 ============================ */
 #controls {
   margin: 20px 0;
@@ -75,7 +103,7 @@ button:hover {
 }
 
 /* ============================
-   TABLE STYLING
+   Table Styling
 ============================ */
 table {
   width: 100%;
@@ -97,7 +125,7 @@ table td {
 }
 
 /* ============================
-   GRAPH AREA
+   Graph Area
 ============================ */
 #graphArea {
   margin-top: 40px;
@@ -144,10 +172,6 @@ body.dark #graphArea svg text {
 }
 
 /* Dark mode header adjustments */
-body.dark header {
-  background-color: #000; /* fallback if banner is dark */
-}
-
 body.dark #logoBox {
   background: rgba(0, 0, 0, 0.65);
   border-color: rgba(255,255,255,0.15);
