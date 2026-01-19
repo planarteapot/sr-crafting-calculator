@@ -584,6 +584,14 @@ async function init() {
   if (calcButton) {
     calcButton.addEventListener("click", runCalculator);
   }
+
+  const shareButton = document.getElementById("shareButton");
+  if (shareButton) {
+   shareButton.addEventListener("click", () => {
+      navigator.clipboard.writeText(window.location.href);
+      alert("Shareable link copied to clipboard!");
+    });
+  }
 }
 
 init();
