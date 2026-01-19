@@ -1,24 +1,38 @@
 /* ============================
-   Base Layout
-============================ */
+   StarRupture Calculator Styles
+   (drop into style.css)
+   ============================ */
+
+/* Base layout and theme */
+:root {
+  --bg-light: #f5f5f5;
+  --fg-light: #222;
+  --muted-border: #ccc;
+  --header-gap: 12px;
+  --accent: #72a4f2;
+}
+
 body {
   font-family: Arial, sans-serif;
   margin: 20px;
-  background: #f5f5f5;
-  color: #222;
-  transition: background 0.3s, color 0.3s;
+  background: var(--bg-light);
+  color: var(--fg-light);
+  transition: background 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Header layout: logo left, centered title image, controls right */
-header {
+/* Header: logo left, centered banner, controls right */
+.site-header,
+header.site-header {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--header-gap);
   padding: 6px 0;
   box-sizing: border-box;
 }
 
-/* Logo box kept compact and visually consistent */
+/* Logo box */
 #logoBox {
   background: #1e1e1e;
   padding: 6px 10px;
@@ -26,153 +40,247 @@ header {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
+  flex: 0 0 96px;      /* fixed width to keep center visually centered */
+  min-width: 72px;
+  border: 1px solid var(--muted-border);
 }
 
-/* Logo sizing */
+/* Logo image */
 #siteLogo {
-  height: 50px;
+  height: 64px;
   width: auto;
   display: block;
 }
 
-/* Title box grows to fill center space and centers its content */
+/* Title box (center) */
 #titleBox {
   flex: 1 1 auto;
   display: flex;
   justify-content: center;
   align-items: center;
   min-width: 0; /* prevents overflow in narrow viewports */
+  padding: 4px 8px;
 }
 
-/* Title image sizing and behavior */
+/* Banner / title image — larger and responsive */
 #siteTitleImage {
-  max-height: 56px; /* adjust as needed */
+  max-height: 140px;   /* larger default size */
+  height: auto;
   width: auto;
   max-width: 100%;
   object-fit: contain;
   display: block;
 }
 
-/* Controls area (right side) */
+/* Controls (right side) */
+#darkModeToggle,
+header button,
+#controls button {
+  padding: 6px 12px;
+  cursor: pointer;
+  border: 1px solid #444;
+  background: #ddd;
+  transition: background 0.2s ease, transform 0.06s ease;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 16px;
+  flex: 0 0 96px;      /* fixed width to balance logo */
+  min-width: 72px;
+}
+
+#darkModeToggle:active,
+header button:active {
+  transform: translateY(1px);
+}
+
+#darkModeToggle[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06);
+}
+
+/* Controls section below header (form controls) */
 #controls {
   margin: 20px 0;
   display: flex;
   gap: 10px;
   align-items: center;
-  flex: 0 0 auto;
+  flex-wrap: wrap;
 }
 
-/* Dark mode toggle button sizing so center stays visually centered */
-#darkModeToggle,
-button {
-  padding: 6px 12px;
+/* Form elements */
+#controls label {
+  font-size: 14px;
+  margin-right: 6px;
+}
+
+#itemSelect,
+#railSelect,
+#rateInput {
+  padding: 6px 8px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: white;
+  color: inherit;
+  font-size: 14px;
+  min-width: 120px;
+}
+
+#rateInput {
+  width: 100px;
+}
+
+/* Primary action */
+#calcButton {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 6px;
   cursor: pointer;
-  border: 1px solid #444;
-  background: #ddd;
-  transition: background 0.3s;
-  height: 40px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+}
+#calcButton:hover { filter: brightness(0.95); }
+
+/* Output and graph areas */
+#outputArea {
+  margin-top: 18px;
+  min-height: 40px;
 }
 
-button:hover {
-  background: #ccc;
+#graphArea {
+  margin-top: 28px;
 }
 
-/* ============================
-   Table Styling
-============================ */
+/* Table styling */
 table {
   width: 100%;
   border-collapse: collapse;
   background: white;
   color: #222;
   margin-top: 20px;
+  border-radius: 4px;
+  overflow: hidden;
 }
 
 table th {
   background: #2f4f4f;
   color: white;
   padding: 8px;
+  text-align: left;
 }
 
 table td {
   padding: 6px 10px;
-  border: 1px solid #ccc;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+/* Download button styling */
+#downloadOffline a {
+  display: inline-block;
+  font-size: 16px;
+  text-decoration: none;
+  padding: 10px 18px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: white;
+  font-weight: 600;
+}
+
+/* Ko-fi widget spacing guard */
+.kofi-overlay {
+  z-index: 9999;
 }
 
 /* ============================
-   Graph Area
-============================ */
-#graphArea {
-  margin-top: 40px;
-}
-
-#graphArea svg text {
-  fill: #333;
-}
-
-/* ============================
-   DARK MODE
-============================ */
+   Dark mode
+   ============================ */
 body.dark {
-  background: #1e1e1e;
+  background: #111;
   color: #ddd;
 }
 
 body.dark #logoBox {
+  border: 1px solid #222;
+  background: #0f0f0f;
+}
+
+body.dark #siteTitleImage {
+  /* if you provide a dark variant, swap via JS; this keeps sizing consistent */
+  filter: brightness(0.95);
+}
+
+body.dark #itemSelect,
+body.dark #railSelect,
+body.dark #rateInput {
+  background: #1f1f1f;
+  color: #ddd;
   border: 1px solid #333;
 }
 
-body:not(.dark) #logoBox {
-  border: 1px solid #ccc;
-}
-
-body.dark button,
-body.dark #darkModeToggle {
-  background: #444;
-  color: #eee;
-  border-color: #666;
-}
-
-body.dark button:hover,
-body.dark #darkModeToggle:hover {
-  background: #555;
-}
-
 body.dark table {
-  background: #2a2a2a;
+  background: #1b1b1b;
   color: #ddd;
 }
 
 body.dark table th {
-  background: #444;
-  color: #fff;
+  background: #333;
 }
 
 body.dark table td {
-  border: 1px solid #555;
+  border-bottom: 1px solid #2a2a2a;
 }
 
-body.dark #graphArea svg text {
-  fill: #ddd;
+body.dark #downloadOffline a {
+  filter: brightness(0.95);
+}
+
+/* ============================
+   Accessibility and focus
+   ============================ */
+:focus {
+  outline: none;
+}
+button:focus,
+#calcButton:focus,
+#darkModeToggle:focus,
+#itemSelect:focus,
+#rateInput:focus,
+#railSelect:focus {
+  box-shadow: 0 0 0 3px rgba(114,164,242,0.18);
+  outline: none;
 }
 
 /* ============================
    Responsive adjustments
-============================ */
-@media (max-width: 900px) {
-  #siteLogo { height: 44px; }
-  #siteTitleImage { max-height: 48px; }
-  #darkModeToggle, button { height: 36px; padding: 6px 10px; }
+   ============================ */
+@media (max-width: 1000px) {
+  #siteLogo { height: 56px; }
+  #siteTitleImage { max-height: 110px; }
+  #darkModeToggle, header button { height: 44px; flex: 0 0 80px; }
+  #logoBox, #controls { flex: 0 0 80px; min-width: 64px; }
 }
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
   body { margin: 12px; }
-  #siteLogo { height: 36px; }
-  #siteTitleImage { max-height: 40px; }
-  #darkModeToggle, button { height: 34px; font-size: 14px; padding: 4px 8px; }
-  header { gap: 8px; }
+  #siteLogo { height: 48px; }
+  #siteTitleImage { max-height: 84px; }
+  #darkModeToggle, header button { height: 40px; font-size: 14px; padding: 6px 10px; }
+  header.site-header { gap: 8px; }
+  #logoBox, #controls { flex: 0 0 64px; min-width: 56px; }
+  #controls { gap: 8px; }
+  #rateInput { width: 88px; }
+}
+
+@media (max-width: 420px) {
+  /* Stack controls vertically on very small screens */
+  #controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #controls label { margin-bottom: 4px; }
+  #itemSelect, #railSelect, #rateInput { width: 100%; }
+  #calcButton { width: 100%; }
+  #siteTitleImage { max-height: 64px; }
 }
