@@ -13,42 +13,43 @@ body {
    HEADER WITH BANNER BACKDROP
 ============================ */
 header {
-  height: 240px; /* adjust to taste */
-  padding: 0 20px;
-
-  /* Banner background */
-  background-image: url("data/SRCC_Banner_2.png"); /* replace with your file */
-  background-size: cover;      /* prevents warping */
-  background-position: center 40%; /* keeps sun centered */
-  background-repeat: no-repeat;
-
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   position: relative;
+  overflow: hidden;
 }
 
-/* Logo container */
-#logoBox { 
-  background: rgba(0, 0, 0, 0.55); /* translucent for readability */
-  padding: 6px 10px;
-  border-radius: 6px;
-  display: inline-flex; 
-  align-items: center; 
-  justify-content: center;
-  border: 1px solid rgba(255,255,255,0.25);
-}
-
-#siteLogo { 
-  height: 50px; 
-  width: auto; 
+/* Banner image that scales with width */
+#headerBanner {
+  width: 100%;
+  height: auto;
   display: block;
+
+  /* Default height target */
+  max-height: 160px;
 }
 
-/* Title image (if used) */
-#titleBox img {
-  height: 60px;
-  object-fit: contain;
+/* Overlay content */
+header > *:not(#headerBanner) {
+  position: absolute;
+  z-index: 2;
+}
+
+/* Positioning your elements */
+#logoBox {
+  top: 50%;
+  left: 20px;
+  transform: translateY(-50%);
+}
+
+#titleBox {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+#darkModeToggle {
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
 }
 
 /* ============================
