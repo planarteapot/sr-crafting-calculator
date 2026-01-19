@@ -66,6 +66,28 @@ function computeRailsNeeded(inputRates, railSpeed) {
   return Math.ceil(total / railSpeed);
 }
 
+// ===============================
+// Toast Notification System
+// ===============================
+function showToast(message) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+
+  container.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+  });
+
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
 
 // ===============================
 // Chain Expansion
@@ -587,9 +609,22 @@ async function init() {
 
   const shareButton = document.getElementById("shareButton");
   if (shareButton) {
-   shareButton.addEventListener("click", () => {
-      navigator.clipboard.writeText(window.location.href);
-      alert("Shareable link copied to clipboard!");
+    shareButton.addEventListener("click", () => {
+      const url = window.location.href;
+
+      navigator.clipboard.writeText(url).then(() => {
+        showToast("Shareable link copied!");
+      }).catch(() => {
+        // Fallback for browsers that block clipboard API
+        const temp = document.createElement("input");
+        temp.value = url;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand("copy");
+        temp.remove();
+
+        showToast("Shareable link copied!");
+      });
     });
   }
 }

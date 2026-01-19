@@ -198,3 +198,39 @@ body.dark #logoBox {
   background: rgba(0, 0, 0, 0.65);
   border-color: rgba(255,255,255,0.15);
 }
+
+/* ============================
+   TOAST BUTTON
+============================ */
+#toastContainer {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+}
+
+.toast {
+  padding: 12px 18px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  background: rgba(0, 0, 0, 0.85);
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* Dark mode support */
+body.dark .toast {
+  background: rgba(255, 255, 255, 0.85);
+  color: black;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
