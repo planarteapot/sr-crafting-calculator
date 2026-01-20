@@ -334,18 +334,19 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (updated)
-   - Smelters: no left anchor
-   - BBM: no left anchor, right anchor shown
-   - Raw->level0/BBM/Smelter lines drawn center->center (node-to-node)
-   - Anchors spaced further from nodes via ANCHOR_OFFSET
-   - Columns sorted alphabetically top->bottom
+   renderGraph (complete)
+   - Alphabetical columns
+   - BBM aligned with smelter outputs
+   - Helper dots for all except far-left raw and smelters' left anchors
+   - Raw->Smelter/BBM lines drawn node-to-node
+   - Anchors spaced by ANCHOR_OFFSET
+   - Spine logic: vertical spine per column (bottom->top), horizontal connector to next column top input, then down to next column bottom input
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
   const ANCHOR_RADIUS = 5;
   const ANCHOR_HIT_RADIUS = 12;
-  const ANCHOR_OFFSET = 18; // increased spacing from node edge (was ~10)
+  const ANCHOR_OFFSET = 18; // spacing from node edge to helper dot
   const isDark = isDarkMode();
 
   const BBM_ID = 'Basic Building Material';
@@ -402,43 +403,86 @@ function renderGraph(nodes, links, rootItem) {
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
-  // Build inner SVG
-  let inner = '';
-
-  // Spine placeholders
-  for (const depthKey of Object.keys(columns)) {
-    const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36;
-    const topY = minY - GRAPH_ROW_HEIGHT;
-    const bottomY = maxY + GRAPH_ROW_HEIGHT;
-    inner += `
-      <g class="spine-placeholder" data-depth="${depth}">
-        <line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${bottomY}"
-              stroke="${isDark ? '#2b2b2b' : '#e9e9e9'}" stroke-width="1" stroke-dasharray="4 6" opacity="0.35" pointer-events="none" />
-        <rect x="${spineX - 18}" y="${topY - 44}" width="36" height="28" rx="6" ry="6"
-              fill="${isDark ? '#222' : '#fff'}" stroke="${isDark ? '#444' : '#ddd'}" stroke-width="1" opacity="0.6" pointer-events="none" />
-      </g>
-    `;
+  // Helper functions for anchor positions
+  function outputAnchorPos(node) {
+    return { x: node.x + nodeRadius + ANCHOR_OFFSET, y: node.y };
+  }
+  function inputAnchorPos(node) {
+    return { x: node.x - nodeRadius - ANCHOR_OFFSET, y: node.y };
   }
 
   // Determine leftmost depth (minDepth)
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
 
+  // Build spine SVG fragments (draw behind nodes)
+  let spineSvg = '';
+  (function buildSpines() {
+    const depths = Object.keys(columns).map(d => Number(d)).sort((a, b) => a - b);
+    for (let i = 0; i < depths.length; i++) {
+      const depth = depths[i];
+      const colNodes = columns[depth] || [];
+
+      // Output anchors in this column (exclude leftmost raw nodes)
+      const outputs = colNodes
+        .filter(n => (n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && !(n.raw && n.depth === minDepth))
+        .map(n => outputAnchorPos(n));
+
+      if (outputs.length === 0) continue;
+
+      const ysOut = outputs.map(p => p.y);
+      const topOutY = Math.min(...ysOut);
+      const bottomOutY = Math.max(...ysOut);
+      const spineX = outputs[0].x;
+
+      // Vertical spine (bottom -> top)
+      spineSvg += `
+        <line class="graph-spine-vertical" x1="${spineX}" y1="${bottomOutY}" x2="${spineX}" y2="${topOutY}"
+              stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+      `;
+
+      // If next column exists, connect to its input anchors
+      if (i + 1 < depths.length) {
+        const nextDepth = depths[i + 1];
+        const nextColNodes = columns[nextDepth] || [];
+
+        const inputs = nextColNodes
+          .filter(n => n.hasInputAnchor && !(n.raw && n.depth === minDepth))
+          .map(n => inputAnchorPos(n));
+
+        if (inputs.length > 0) {
+          const topInY = Math.min(...inputs.map(p => p.y));
+          const bottomInY = Math.max(...inputs.map(p => p.y));
+          const nextSpineX = inputs[0].x;
+
+          // Horizontal connector from top of current spine to next column's top input x
+          spineSvg += `
+            <line class="graph-spine-horizontal" x1="${spineX}" y1="${topOutY}" x2="${nextSpineX}" y2="${topOutY}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+            <line class="graph-spine-horizontal" x1="${nextSpineX}" y1="${topOutY}" x2="${nextSpineX}" y2="${topInY}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+            <line class="graph-spine-vertical" x1="${nextSpineX}" y1="${topInY}" x2="${nextSpineX}" y2="${bottomInY}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+          `;
+        }
+      }
+    }
+  })();
+
+  // Build inner SVG: start with spines so they render behind nodes
+  let inner = spineSvg;
+
   // --- Edges: draw only raw->Smelter or raw->BBM lines, node-to-node (center->center) ---
   for (const link of links) {
-    // links are consumer -> input (consumer consumes input)
     const rawSource = nodes.find(n => n.id === link.to);
     const consumer = nodes.find(n => n.id === link.from);
     if (!rawSource || !consumer) continue;
 
     const consumerIsBBM = (consumer.id === BBM_ID || consumer.label === BBM_ID);
 
-    // Only draw when source is raw, on leftmost column, and consumer is Smelter OR BBM
     if (rawSource.raw && rawSource.depth === minDepth && (consumer.building === 'Smelter' || consumerIsBBM)) {
-      // Node-to-node: start at raw center, end at consumer center
       const startX = rawSource.x;
       const startY = rawSource.y;
-      const endX = consumer.x; // center of consumer (node-to-node)
+      const endX = consumer.x;
       const endY = consumer.y;
 
       inner += `
