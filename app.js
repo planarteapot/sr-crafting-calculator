@@ -319,6 +319,42 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
+// --- special anchor rules for raw -> smelter direct connections ---
+// Assumes `chain` (the expanded chain object) is in scope in buildGraphData
+// and nodes is the array of node objects you already created.
+
+const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
+
+// Helper to check if an item in the chain is a raw extractor
+function isExtractorItem(itemName) {
+  const entry = chain[itemName];
+  return !!(entry && entry.raw);
+}
+
+for (const node of nodes) {
+  // Default anchors
+  node.hasInputAnchor = !node.raw;               // raw resources: no left anchor by default
+  node.hasOutputAnchor = (node.depth < maxDepth); // final outputs: no right anchor
+
+  // Ensure raw sources always expose an output anchor (they produce something)
+  if (node.raw) {
+    node.hasInputAnchor = false;
+    node.hasOutputAnchor = true;
+  }
+
+  // Special case: smelters that only consume raw resources
+  // If this node's building is "Smelter" and every input is a raw extractor,
+  // hide the left anchor so the raw node can connect directly to the smelter body.
+  if (node.building === 'Smelter') {
+    const inputNames = Object.keys(node.inputs || {});
+    if (inputNames.length > 0 && inputNames.every(inName => isExtractorItem(inName))) {
+      node.hasInputAnchor = false;
+    }
+    // ensure smelter still exposes its output anchor so it can feed rails
+    node.hasOutputAnchor = true;
+  }
+}
+
 /* ===============================
    Replace: renderGraph (draw anchors + placeholders)
    - Adds left/right anchor circles with data-anchor attributes
