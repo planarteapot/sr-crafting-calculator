@@ -526,7 +526,7 @@ function ensureResetButton() {
   const graphArea = document.getElementById('graphArea');
   if (!graphArea) return null;
 
-  // If button exists but not in the correct place, remove it so we can recreate correctly
+  // If button exists but not immediately before graphArea, remove and recreate
   if (btn && btn.nextElementSibling !== graphArea) {
     btn.remove();
     btn = null;
@@ -543,7 +543,7 @@ function ensureResetButton() {
 
     // Minimal inline styles to center the button and keep it out of the graph's interactive area
     btn.style.display = 'flex';
-    btn.style.justifyContent = 'center'; // CENTER the button horizontally
+    btn.style.justifyContent = 'center'; // center horizontally
     btn.style.alignItems = 'center';
     btn.style.padding = '8px 12px';
     btn.style.boxSizing = 'border-box';
@@ -565,14 +565,14 @@ function ensureResetButton() {
   // Run once after insertion to set padding
   requestAnimationFrame(() => adjustGraphTopPadding());
 
-  // Keep padding correct on window resize (debounced)
-  let resizeTimer = null;
-  function onResize() {
-    if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => adjustGraphTopPadding(), 80);
+  // Attach a single debounced resize handler once (store on the button element)
+  if (!btn._graphResizeHandler) {
+    btn._graphResizeHandler = () => {
+      if (btn._graphResizeTimer) clearTimeout(btn._graphResizeTimer);
+      btn._graphResizeTimer = setTimeout(() => adjustGraphTopPadding(), 80);
+    };
+    window.addEventListener('resize', btn._graphResizeHandler);
   }
-  window.removeEventListener('resize', onResize);
-  window.addEventListener('resize', onResize);
 
   return btn;
 }
@@ -744,12 +744,12 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      computeAutoFit();
-      showToast("View reset");
-    });
-  }
+   if (resetBtn) {
+     resetBtn.onclick = () => {
+       computeAutoFit();
+       showToast("View reset");
+     };
+   }
 
   if (autoFit) requestAnimationFrame(() => computeAutoFit());
   else applyTransform();
