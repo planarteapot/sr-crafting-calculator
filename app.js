@@ -521,65 +521,55 @@ function pointerIsOnNode(ev) {
    Zoom / pan utilities (pointer-based)
    - pan start is guarded by pointerIsOnNode so nodes handle their own pointers
    =============================== */
-// Replace your existing ensureResetButton with this version.
-// It places the reset button *above* the graphArea in the DOM and
-// ensures the graph content is pushed down so panning/zooming cannot
-// visually overlap the button. It also updates padding on resize.
 function ensureResetButton() {
   let btn = document.querySelector('.graphResetButton');
   const graphArea = document.getElementById('graphArea');
   if (!graphArea) return null;
 
-  // If button already exists, ensure it's still positioned before graphArea
-  if (btn) {
-    if (btn.nextElementSibling !== graphArea) {
-      btn.remove();
-      btn = null;
-    } else {
-      // already in correct place; ensure padding is correct
-      requestAnimationFrame(() => adjustGraphTopPadding(btn, graphArea));
-      return btn;
-    }
+  // If button exists but not in the correct place, remove it so we can recreate correctly
+  if (btn && btn.nextElementSibling !== graphArea) {
+    btn.remove();
+    btn = null;
   }
 
-  // Create button container
-  btn = document.createElement('div');
-  btn.className = 'graphResetButton';
-  btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
+  // Create button container if missing
+  if (!btn) {
+    btn = document.createElement('div');
+    btn.className = 'graphResetButton';
+    btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
 
-  // Keep the button in normal flow above the graphArea so the graph cannot overlap it.
-  // Insert it directly before the graphArea element.
-  graphArea.parentNode.insertBefore(btn, graphArea);
+    // Insert the button directly before the graphArea so it stays above it in document flow
+    graphArea.parentNode.insertBefore(btn, graphArea);
 
-  // Small inline styles to keep it visually separated and accessible.
-  // (These are minimal and safe to override in your CSS if you prefer.)
-  btn.style.display = 'flex';
-  btn.style.justifyContent = 'flex-end';
-  btn.style.gap = '8px';
-  btn.style.padding = '6px 8px';
-  btn.style.boxSizing = 'border-box';
-  btn.style.background = 'transparent';
-  btn.style.zIndex = '10';
+    // Minimal inline styles to center the button and keep it out of the graph's interactive area
+    btn.style.display = 'flex';
+    btn.style.justifyContent = 'center'; // CENTER the button horizontally
+    btn.style.alignItems = 'center';
+    btn.style.padding = '8px 12px';
+    btn.style.boxSizing = 'border-box';
+    btn.style.background = 'transparent';
+    btn.style.zIndex = '20';
+    btn.style.pointerEvents = 'auto';
+  }
 
-  // Adjust the graphArea's top padding so the SVG content is pushed down
-  // and cannot be panned/zoomed under the button.
-  function adjustGraphTopPadding(buttonEl, graphEl) {
-    if (!buttonEl || !graphEl) return;
+  // Ensure the graphArea has top padding so the SVG cannot be panned/zoomed under the button
+  function adjustGraphTopPadding() {
+    if (!btn || !graphArea) return;
     // Measure button height after layout
-    const h = Math.max(0, buttonEl.offsetHeight || 0);
-    // Add a small gap so the button doesn't sit flush on the SVG
-    const gap = 8;
-    graphEl.style.paddingTop = (h + gap) + 'px';
+    const h = Math.max(0, btn.offsetHeight || 0);
+    const gap = 8; // small gap between button and graph
+    // Apply padding-top to graphArea; preserve any existing padding-bottom etc.
+    graphArea.style.paddingTop = (h + gap) + 'px';
   }
 
   // Run once after insertion to set padding
-  requestAnimationFrame(() => adjustGraphTopPadding(btn, graphArea));
+  requestAnimationFrame(() => adjustGraphTopPadding());
 
-  // Keep padding correct on window resize (debounced-ish)
+  // Keep padding correct on window resize (debounced)
   let resizeTimer = null;
   function onResize() {
     if (resizeTimer) clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(() => adjustGraphTopPadding(btn, graphArea), 80);
+    resizeTimer = setTimeout(() => adjustGraphTopPadding(), 80);
   }
   window.removeEventListener('resize', onResize);
   window.addEventListener('resize', onResize);
