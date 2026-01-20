@@ -1,6 +1,13 @@
 /* ============================
-   Base Layout
-============================ */
+   Updated stylesheet for prototypes
+   - Keeps original look and behavior
+   - Adds graph test controls, debug markers, and robust SVG rules
+   - Ports / Offsets / Bus visual helpers included
+   ============================ */
+
+/* ============================
+   Base Layout (kept from original)
+   ============================ */
 body {
   font-family: Arial, sans-serif;
   margin: 20px;
@@ -10,8 +17,8 @@ body {
 }
 
 /* ============================
-   Header with responsive banner
-============================ */
+   Header with responsive banner (kept + safety)
+   ============================ */
 header {
   position: relative;
   overflow: hidden;
@@ -23,14 +30,12 @@ header {
   background-repeat: no-repeat;
   background-color: #1a0a05;
   box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
+  z-index: 10;
 }
 
+/* Ensure header children are positioned above background */
 #headerBanner { display: none; }
-
-header > *:not(#headerBanner) {
-  position: absolute;
-  z-index: 2;
-}
+header > *:not(#headerBanner) { position: absolute; z-index: 12; }
 
 #logoBox {
   top: 50%;
@@ -44,8 +49,8 @@ header > *:not(#headerBanner) {
   justify-content: center;
   border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(4px);
+  z-index: 20;
 }
-
 #siteLogo { height: 45px; width: auto; display: block; }
 
 #titleBox {
@@ -53,8 +58,8 @@ header > *:not(#headerBanner) {
   left: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
+  z-index: 20;
 }
-
 #titleBox img { height: 70px; object-fit: contain; }
 
 #darkModeToggle {
@@ -68,6 +73,7 @@ header > *:not(#headerBanner) {
   border-radius: 4px;
   font-weight: bold;
   transition: all 0.3s ease;
+  z-index: 30;
 }
 #darkModeToggle:hover { background: #ffffff; transform: translateY(-50%) scale(1.05); }
 
@@ -78,8 +84,8 @@ header > *:not(#headerBanner) {
 }
 
 /* ============================
-   Controls and table container
-============================ */
+   Controls and table container (kept)
+   ============================ */
 #controls {
   margin: 20px 0;
   display: flex;
@@ -92,6 +98,7 @@ button {
   border: 1px solid #444;
   background: #ddd;
   transition: background 0.3s;
+  border-radius: 6px;
 }
 button:hover { background: #ccc; }
 
@@ -99,8 +106,8 @@ button:hover { background: #ccc; }
 #controls { display: inline-block; text-align: left; margin-bottom: 20px; }
 
 /* ============================
-   Table styling
-============================ */
+   Table styling (kept)
+   ============================ */
 table {
   width: 100%;
   border-collapse: collapse;
@@ -114,13 +121,13 @@ table th {
   padding: 8px;
 }
 table td {
-  padding: 8px 12px; /* slightly more padding for readability */
+  padding: 8px 12px;
   border: 1px solid #ccc;
 }
 
 /* ============================
-   Reset button (below tables, above graph)
-============================ */
+   Reset button (kept)
+   ============================ */
 .graphResetButton {
   display: flex;
   justify-content: center;
@@ -137,35 +144,27 @@ table td {
 .graphResetButton button:hover { filter: brightness(0.98); }
 
 /* ============================
-   Graph area
-============================ */
-#graphArea { margin-top: 8px; }
+   Graph area + wrapper (enhanced)
+   ============================ */
+#graphArea { margin-top: 8px; position: relative; z-index: 1; }
 #graphArea svg text { fill: #333; }
 
-/* ============================
-   Graph wrapper: auto-fit + pan/zoom
-   (no slider; panning via transform)
-   - reserves vertical space for reset button above graph
-   - uses padded viewBox so panning doesn't clip nodes
-============================ */
+/* Graph wrapper: auto-fit + pan/zoom */
 .graphWrapper {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   max-height: calc(100vh - 220px);
-  overflow: hidden; /* panning via transform, no scrollbars initially */
+  overflow: hidden;
   padding: 8px;
-  padding-top: 12px; /* small top padding; reset button sits in document flow */
+  padding-top: 12px;
   border-radius: 6px;
   background: rgba(255,255,255,0.02);
+  position: relative;
 }
 
 /* Ensure SVG fills wrapper and respects viewBox */
-.graphWrapper .graphViewport {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
+.graphWrapper .graphViewport { width: 100%; height: 100%; display: block; }
 .graphWrapper svg.graphSVG {
   width: 100%;
   height: auto;
@@ -176,62 +175,117 @@ table td {
 }
 
 /* ============================
-   SVG text spacing and readability
-   (increased spacing between labels, numbers, and nodes)
-============================ */
-/* SVG text centering helpers */
-.graphSVG text.nodeNumber {
-  font-size: 13px;
-  font-weight: 700;
-  text-anchor: middle;
-  /* alignment-baseline and dominant-baseline help some browsers; dy=".35em" does the visual centering */
-  alignment-baseline: central;
-  dominant-baseline: central;
-  paint-order: stroke;
-  stroke-linejoin: round;
-}
-
-/* keep label styling consistent */
+   SVG text & node styling — robust centering
+   ============================ */
 .graphSVG text.nodeLabel {
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
   font-size: 13px;
   font-weight: 700;
+  letter-spacing: 0.2px;
   text-anchor: middle;
   paint-order: stroke;
-  stroke-linejoin: round;
-}
-
-/* reduce stroke width for text so stroke doesn't push glyphs off visually */
-.graphSVG text {
   stroke-width: 0.6px;
-  paint-order: stroke;
+  stroke-linejoin: round;
+  fill: currentColor;
 }
 
-/* Node rect adjustments (if present) */
-.graphSVG rect {
-  rx: 4;
-  ry: 4;
+.graphSVG text.nodeNumber {
+  font-family: "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle !important;
+  dominant-baseline: central !important;
+  alignment-baseline: central !important;
+  baseline-shift: 0 !important;
+  paint-order: stroke;
+  stroke-width: 0.6px;
+  stroke-linejoin: round;
+  fill: currentColor;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: translateY(0) !important;
 }
+
+/* Prevent global rules from shifting SVG text */
+svg text { line-height: normal !important; white-space: pre !important; }
+
+/* Circles and rects should not scale stroke with transforms */
+.graphSVG circle, .graphSVG rect { vector-effect: non-scaling-stroke; }
 
 /* Cursor styles for panning */
 .graphSVG { cursor: grab; display: block; }
 .graphSVG:active { cursor: grabbing; }
 
-/* Optional: nicer scrollbars if ever enabled */
-.graphWrapper::-webkit-scrollbar { height: 10px; width: 10px; }
-.graphWrapper::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 6px; }
+/* ============================
+   Prototype helpers: ports, bus, debug markers
+   ============================ */
+
+/* Port marker (small square left of node) */
+.graphSVG .port-marker {
+  fill: #fff;
+  stroke: #333;
+  stroke-width: 1px;
+  rx: 2px;
+  ry: 2px;
+}
+
+/* Bus line style */
+.graphSVG .bus {
+  stroke: #444;
+  stroke-width: 3px;
+  stroke-linecap: round;
+}
+
+/* Edge style (straight lines) */
+.graphSVG .edge {
+  stroke: #666;
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+/* Debug markers (visible when debug enabled) */
+.graphSVG .debug-dot { fill: #ff0000; r: 3px; }
+.graphSVG .debug-dot-small { fill: #22aa22; r: 2px; }
 
 /* ============================
-   Dark mode
-============================ */
+   Graph test controls (UI above graph)
+   ============================ */
+#graphTestControls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  z-index: 40;
+}
+#graphTestControls select, #graphTestControls input[type="checkbox"], #graphTestControls button {
+  font-size: 13px;
+}
+
+/* ============================
+   Force visibility overrides (fixes hidden SVG issues)
+   ============================ */
+.graphWrapper, .graphWrapper .graphViewport, svg.graphSVG {
+  display: block !important;
+  visibility: visible !important;
+  width: 100% !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Ensure SVG primitives render above backgrounds */
+.graphSVG circle, .graphSVG rect, .graphSVG text, .graphSVG line, .graphSVG path {
+  paint-order: stroke;
+}
+
+/* ============================
+   Dark mode (kept + consistent)
+   ============================ */
 body.dark {
   background: #1e1e1e;
   color: #ddd;
 }
-body.dark button {
-  background: #444;
-  color: #eee;
-  border-color: #666;
-}
+body.dark button { background: #444; color: #eee; border-color: #666; }
 body.dark button:hover { background: #555; }
 body.dark table { background: #2a2a2a; color: #ddd; }
 body.dark table th { background: #444; color: #fff; }
@@ -240,8 +294,8 @@ body.dark #graphArea svg text { fill: #ddd; }
 body.dark #logoBox { background: rgba(0, 0, 0, 0.65); border-color: rgba(255,255,255,0.15); }
 
 /* ============================
-   Toast
-============================ */
+   Toast (kept)
+   ============================ */
 #toastContainer {
   position: fixed;
   bottom: 20px;
@@ -266,11 +320,19 @@ body.dark .toast { background: rgba(255, 255, 255, 0.85); color: black; }
 .toast.show { opacity: 1; transform: translateY(0); }
 
 /* ============================
-   Accessibility & small tweaks
-============================ */
+   Accessibility & small tweaks (kept)
+   ============================ */
 .graphResetButton button:focus { outline: 2px solid rgba(0, 120, 215, 0.6); outline-offset: 2px; }
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; }
 }
+
+/* ============================
+   Troubleshooting helpers (comment/uncomment while debugging)
+   ============================ */
+/*
+header.debug-outline { outline: 2px dashed rgba(255,255,255,0.12); }
+.graphWrapper.debug-outline { outline: 2px dashed rgba(0,0,0,0.08); }
+*/
