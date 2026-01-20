@@ -163,12 +163,12 @@ function buildGraphData(chain) {
 }
 
 /* ===============================
-   Render graph (nodes + raw-left direct wires)
+   renderGraph (raw-left node-to-node wires; no helper dot on leftmost raw nodes)
    =============================== */
-function renderGraph(nodes, links) {
+function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
   const anchorRadius = 5;
-  const anchorHitRadius = 12;
+  const anchorHitRadius = 12; // invisible hit area
   const isDark = isDarkMode();
 
   // Group nodes by depth
@@ -178,16 +178,21 @@ function renderGraph(nodes, links) {
     columns[node.depth].push(node);
   }
 
-  // Layout nodes
+  // Layout nodes (left -> right: depth -> x, index -> y)
   for (const [depth, colNodes] of Object.entries(columns)) {
-    colNodes.sort((a, b) => (a.label || '').localeCompare(b.label || ''));
+    colNodes.sort((a, b) => {
+      const aOut = links.filter(l => l.to === a.id).length;
+      const bOut = links.filter(l => l.to === b.id).length;
+      if (bOut !== aOut) return bOut - aOut;
+      return (a.label || a.id).localeCompare(b.label || b.id);
+    });
     colNodes.forEach((node, i) => {
       node.x = Number(depth) * GRAPH_COL_WIDTH + 100;
       node.y = i * GRAPH_ROW_HEIGHT + 100;
     });
   }
 
-  // Bounds
+  // Compute content bounds
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
@@ -200,12 +205,13 @@ function renderGraph(nodes, links) {
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
+  // Build inner SVG
   let inner = '';
 
-  // Spine placeholders (visual only)
+  // Spine placeholders (one per depth column)
   for (const depthKey of Object.keys(columns)) {
     const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36;
+    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
     const topY = minY - GRAPH_ROW_HEIGHT;
     const bottomY = maxY + GRAPH_ROW_HEIGHT;
     inner += `
@@ -218,18 +224,25 @@ function renderGraph(nodes, links) {
     `;
   }
 
-  // Draw direct wires for raw sources on the far-left
+  // Determine leftmost depth (minDepth)
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
+
+  // --- Edges: draw direct node-to-node wires for raw sources on the far left ---
   for (const link of links) {
-    // links are consumer -> input
+    // links are consumer -> input (consumer consumes input)
     const rawSource = nodes.find(n => n.id === link.to);
     const consumer = nodes.find(n => n.id === link.from);
     if (!rawSource || !consumer) continue;
 
+    // Only draw if the source is a raw extractor and is displayed on the far left
     if (!(rawSource.raw && rawSource.depth === minDepth)) continue;
 
-    const startX = rawSource.hasOutputAnchor ? (rawSource.x + nodeRadius + 10) : rawSource.x;
+    // Start at raw node center (node-to-node)
+    const startX = rawSource.x;
     const startY = rawSource.y;
+
+    // End at consumer center OR at consumer left anchor if it exists and you prefer that visual
+    // (consumer.hasInputAnchor may be false for smelters that consume only raw inputs)
     const endX = consumer.hasInputAnchor ? (consumer.x - nodeRadius - 10) : consumer.x;
     const endY = consumer.y;
 
@@ -237,7 +250,7 @@ function renderGraph(nodes, links) {
       <line class="graph-edge" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}"
             x1="${startX}" y1="${startY}"
             x2="${endX}" y2="${endY}"
-            stroke="#2f2f2f" stroke-width="2.6" stroke-linecap="round" />
+            stroke="#333" stroke-width="2.6" stroke-linecap="round" />
     `;
   }
 
@@ -252,7 +265,9 @@ function renderGraph(nodes, links) {
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
               text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke" pointer-events="none">
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
           ${escapeHtml(node.label)}
         </text>
 
@@ -268,13 +283,19 @@ function renderGraph(nodes, links) {
     inner += `
         <text class="nodeNumber" x="${node.x}" y="${node.y}"
               text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke" pointer-events="none">
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
     `;
 
-    // Left input anchor (if present)
-    if (node.hasInputAnchor) {
+    // Decide whether to render anchors for this node.
+    // RULE: if node is raw AND node.depth === minDepth, render NO helper dots at all.
+    const hideAllAnchors = (node.raw && node.depth === minDepth);
+
+    // Left input anchor (if present and not hidden)
+    if (!hideAllAnchors && node.hasInputAnchor) {
       const ax = node.x - nodeRadius - 10;
       const ay = node.y;
       inner += `
@@ -285,11 +306,10 @@ function renderGraph(nodes, links) {
       `;
     }
 
-    // Right output anchor (if present) - raw nodes keep right anchor visible
-    if (node.hasOutputAnchor) {
+    // Right output anchor (if present and not hidden)
+    if (!hideAllAnchors && node.hasOutputAnchor) {
       const bx = node.x + nodeRadius + 10;
       const by = node.y;
-      // hide left helper dot for raw nodes by keeping left anchor absent earlier
       inner += `
         <g class="anchor anchor-right" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${bx},${by})" tabindex="0" role="button" aria-label="Output anchor for ${escapeHtml(node.label)}">
           <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
@@ -322,6 +342,7 @@ function renderGraph(nodes, links) {
   `;
   return svg;
 }
+
 
 /* ===============================
    Simple attach handlers so clicks work
