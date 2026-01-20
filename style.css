@@ -117,6 +117,13 @@ header > *:not(#headerBanner) { position: absolute; z-index: 2; }
   font-weight: 600;
 }
 
+/* Info panel link styling */
+.info-panel a {
+  color: var(--accent, #72a4f2);
+  text-decoration: underline;
+  font-weight: 600;
+}
+
 /* Small responsive tweak: keep panel readable on narrow screens */
 @media (max-width: 520px) {
   .info-panel { width: calc(100% - 24px); left: 12px !important; right: 12px !important; }
