@@ -334,10 +334,11 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (bypass dot exactly aligned with top helper dots)
-   - Full replacement function
-   - Bypass dot Y uses the exact anchorTopPos(node).y value so it matches per-node top helper dots
-   - No right helper dot for nodes in final column (depth === maxDepth)
+   renderGraph (final alignment: bypass dot exactly matches top helper dots)
+   - Single-file replacement you can drop in
+   - Bypass dot Y uses anchorTopPos(topOutputNode).y (exact same coordinate as per-node top helper dots)
+   - Bypass dot uses the same fill as regular anchor dots
+   - No right helper dot or connector for nodes in final column (depth === maxDepth)
    - Preserves BBM alignment, spines, connectors, and other anchor rules
    =============================== */
 function renderGraph(nodes, links, rootItem) {
@@ -443,8 +444,7 @@ function renderGraph(nodes, links, rootItem) {
 
     if (anyFarConsumer) {
       // compute a single bypass dot position for this column:
-      // place it horizontally at the column's output anchor x (use first output),
-      // vertically use the exact anchorTopPos(topOutputNode).y so it matches per-node top helper dots
+      // use the top-most output node and take its exact top-anchor coordinate
       const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b));
       const anchorX = anchorRightPos(topOutputNode).x;
       const bypassY = anchorTopPos(topOutputNode).y; // exact same Y as per-node top helper dot
