@@ -26,7 +26,6 @@ header {
 }
 
 #headerBanner { display: none; }
-
 header > *:not(#headerBanner) { position: absolute; z-index: 2; }
 
 #logoBox {
@@ -42,11 +41,8 @@ header > *:not(#headerBanner) { position: absolute; z-index: 2; }
   border: 1px solid rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(4px);
 }
-
 #siteLogo { height: 45px; width: auto; display: block; }
-
 #titleBox { top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
-
 #titleBox img { height: 70px; object-fit: contain; }
 
 #darkModeToggle {
@@ -73,41 +69,45 @@ header > *:not(#headerBanner) { position: absolute; z-index: 2; }
    Controls
 ============================ */
 #controls { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
-
-button {
-  padding: 6px 12px;
-  cursor: pointer;
-  border: 1px solid #444;
-  background: #ddd;
-  transition: background 0.3s;
-}
+button { padding: 6px 12px; cursor: pointer; border: 1px solid #444; background: #ddd; transition: background 0.3s; }
 button:hover { background: #ccc; }
-
 #tableContainer { text-align: center; }
 #controls { display: inline-block; text-align: left; margin-bottom: 20px; }
 
 /* ============================
    Table Styling
 ============================ */
-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  color: #222;
-  margin-top: 20px;
-}
+table { width: 100%; border-collapse: collapse; background: white; color: #222; margin-top: 20px; }
 table th { background: #2f4f4f; color: white; padding: 8px; }
 table td { padding: 6px 10px; border: 1px solid #ccc; }
 
 /* ============================
+   Reset button (below tables, above graph)
+============================ */
+.graphResetButton {
+  display: flex;
+  justify-content: center;
+  margin: 12px 0;
+}
+.graphResetButton button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(0,0,0,0.12);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+.graphResetButton button:hover { filter: brightness(0.98); }
+
+/* ============================
    Graph Area
 ============================ */
-#graphArea { margin-top: 40px; }
+#graphArea { margin-top: 8px; }
 #graphArea svg text { fill: #333; }
 
 /* ============================
    Graph wrapper: auto-fit + pan/zoom
-   (initially no scrollbars; panning via transform)
+   (no slider; panning via transform)
 ============================ */
 .graphWrapper {
   box-sizing: border-box;
@@ -116,49 +116,12 @@ table td { padding: 6px 10px; border: 1px solid #ccc; }
   max-height: calc(100vh - 220px);
   overflow: hidden;
   padding: 8px;
-  padding-top: 64px; /* reserve space for fixed controls */
   border-radius: 6px;
   background: rgba(255,255,255,0.02);
 }
 
 .graphWrapper .graphViewport { width: 100%; height: 100%; display: block; }
 .graphWrapper svg.graphSVG { width: 100%; height: auto; display: block; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
-
-/* ============================
-   Fixed control bar (outside the graph)
-============================ */
-.graphControlsFixed {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  top: 12px; /* JS will adjust to sit below header */
-  z-index: 12000;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: center;
-  background: rgba(255,255,255,0.96);
-  padding: 6px 10px;
-  border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
-  pointer-events: auto;
-}
-
-.graphControls { display: none; } /* hide in-wrapper controls if any */
-
-.graphControlsFixed .zoomSlider { width: 260px; }
-.graphControlsFixed .zoomBtn {
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid rgba(0,0,0,0.08);
-  background: #fff;
-  cursor: pointer;
-  font-size: 16px;
-}
-.graphControlsFixed .zoomBtn:hover { filter: brightness(0.98); }
-
-/* Viewport holds the SVG */
-.graphViewport { overflow: visible; }
 
 /* Cursor styles for panning */
 .graphSVG { cursor: grab; display: block; }
@@ -183,31 +146,11 @@ body.dark #logoBox { background: rgba(0, 0, 0, 0.65); border-color: rgba(255,255
 /* ============================
    TOAST
 ============================ */
-#toastContainer {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 9999;
-}
-.toast {
-  padding: 12px 18px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  background: rgba(0, 0, 0, 0.85);
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
+#toastContainer { position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 10px; z-index: 9999; }
+.toast { padding: 12px 18px; border-radius: 6px; font-size: 14px; font-weight: 600; color: white; background: rgba(0, 0, 0, 0.85); opacity: 0; transform: translateY(20px); transition: opacity 0.3s ease, transform 0.3s ease; }
 body.dark .toast { background: rgba(255, 255, 255, 0.85); color: black; }
 .toast.show { opacity: 1; transform: translateY(0); }
 
 /* Accessibility & small tweaks */
-.graphControlsFixed .zoomBtn:focus,
-.graphControlsFixed .zoomSlider:focus { outline: 2px solid rgba(0, 120, 215, 0.6); outline-offset: 2px; }
-
+.graphResetButton button:focus { outline: 2px solid rgba(0, 120, 215, 0.6); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

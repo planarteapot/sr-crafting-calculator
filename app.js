@@ -1,5 +1,5 @@
 // ===============================
-// app.js - Full updated script (controls moved outside graph)
+// app.js - Full updated script (single Reset button)
 // ===============================
 
 // ===============================
@@ -337,65 +337,34 @@ function renderGraph(nodes, links, rootItem) {
 }
 
 // ===============================
-// Ensure single fixed control bar (outside graph)
+// Create single Reset button (below table, above graph)
 // ===============================
-function ensureGraphControls() {
-  let controls = document.querySelector('.graphControlsFixed');
-  if (controls) return controls;
+function ensureResetButton() {
+  let btn = document.querySelector('.graphResetButton');
+  if (btn) return btn;
 
-  controls = document.createElement('div');
-  controls.className = 'graphControlsFixed';
-  controls.innerHTML = `
-    <button class="zoomBtn" data-action="zoomOut" aria-label="Zoom out">−</button>
-    <input type="range" class="zoomSlider" min="0.25" max="3" step="0.05" value="1" aria-label="Zoom slider" />
-    <button class="zoomBtn" data-action="zoomIn" aria-label="Zoom in">+</button>
-    <button class="zoomBtn" data-action="reset" aria-label="Reset view">Reset</button>
-  `;
+  btn = document.createElement('div');
+  btn.className = 'graphResetButton';
+  btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
 
-  document.body.appendChild(controls);
+  // Insert the reset button into the DOM: place it inside #tableContainer (below tables)
+  const tableContainer = document.getElementById('tableContainer') || document.body;
+  tableContainer.appendChild(btn);
 
-  function positionControls() {
-    const header = document.querySelector('header');
-    const top = header ? (header.getBoundingClientRect().bottom + 8) : 12;
-    controls.style.top = `${Math.max(8, top)}px`;
-    controls.style.left = '50%';
-    controls.style.transform = 'translateX(-50%)';
-  }
-
-  positionControls();
-  window.addEventListener('resize', positionControls);
-  window.addEventListener('scroll', positionControls, { passive: true });
-
-  return controls;
+  return btn;
 }
 
 // ===============================
-// Graph Zoom / Pan Setup (accept external controlsEl)
+// Graph Zoom / Pan Setup (no slider; reset button used)
 // ===============================
-function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {}) {
+function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = {}) {
   if (!containerEl) return;
 
   const svg = containerEl.querySelector('svg.graphSVG');
   const zoomLayer = svg.querySelector('#zoomLayer');
 
-  // prefer externally provided controlsEl (fixed bar); fallback to any .graphControls inside wrapper
-  const controls = controlsEl || document.querySelector('.graphControlsFixed') || containerEl.querySelector('.graphControls');
-  const btns = controls ? controls.querySelectorAll('.zoomBtn') : [];
-  const sliderEl = controls ? controls.querySelector('.zoomSlider') : containerEl.querySelector('.zoomSlider');
-
-  function pinControls() {
-    if (!controls) return;
-    // fixed bar already appended to body; position handled by ensureGraphControls
-  }
-  function unpinControls() {
-    // nothing to do for fixed bar
-  }
-  function updatePinnedControls() {
-    if (!controls) return;
-    const header = document.querySelector('header');
-    const top = header ? (header.getBoundingClientRect().bottom + 8) : 12;
-    controls.style.top = `${Math.max(8, top)}px`;
-  }
+  // Reset button (external)
+  const resetBtn = resetButtonEl || document.querySelector('#resetViewBtn');
 
   let scale = 1;
   let tx = 0;
@@ -463,7 +432,6 @@ function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {})
     tx = clamped.tx;
     ty = clamped.ty;
     zoomLayer.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
-    if (sliderEl) sliderEl.value = scale;
   }
 
   function zoomAt(newScale, cx, cy) {
@@ -484,39 +452,7 @@ function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {})
     applyTransform();
   }
 
-  // Buttons
-  if (btns && btns.length) {
-    btns.forEach(b => {
-      b.addEventListener('click', () => {
-        const action = b.dataset.action;
-        const rect = svg.getBoundingClientRect();
-        const centerX = rect.left + rect.width / 2;
-        const centerY = rect.top + rect.height / 2;
-
-        if (action === 'zoomIn') {
-          const newScale = Math.min(3, +(scale + 0.1).toFixed(3));
-          zoomAt(newScale, centerX, centerY);
-        } else if (action === 'zoomOut') {
-          const newScale = Math.max(0.25, +(scale - 0.1).toFixed(3));
-          zoomAt(newScale, centerX, centerY);
-        } else if (action === 'reset') {
-          if (autoFit) computeAutoFit();
-          else { scale = 1; tx = 0; ty = 0; applyTransform(); }
-        }
-      });
-    });
-  }
-
-  if (sliderEl) {
-    sliderEl.addEventListener('input', () => {
-      const newScale = parseFloat(sliderEl.value);
-      const rect = svg.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const centerY = rect.top + rect.height / 2;
-      zoomAt(newScale, centerX, centerY);
-    });
-  }
-
+  // Wheel zoom (mouse) and pinch handled below
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -525,6 +461,7 @@ function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {})
     zoomAt(newScale, ev.clientX, ev.clientY);
   }, { passive: false });
 
+  // Pan (left click always pans)
   svg.addEventListener('mousedown', (ev) => {
     if (ev.button !== 0) return;
     isPanning = true;
@@ -558,7 +495,7 @@ function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {})
     svg.style.cursor = 'grab';
   });
 
-  // Touch handlers
+  // Touch handlers (pinch + pan)
   let lastTouchDist = null;
   let lastTouchCenter = null;
 
@@ -631,25 +568,32 @@ function setupGraphZoom(containerEl, { autoFit = true, controlsEl = null } = {})
     ty = (view.height - layerH) / 2 - bbox.y * scale;
 
     applyTransform();
-    pinControls();
   }
 
-  const onScrollOrResize = () => updatePinnedControls();
+  // Wire reset button
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      computeAutoFit();
+      showToast("View reset");
+    });
+  }
+
+  const onScrollOrResize = () => { /* no-op for controls positioning here */ };
   window.addEventListener('scroll', onScrollOrResize, { passive: true });
   window.addEventListener('resize', onScrollOrResize);
 
   if (autoFit) requestAnimationFrame(() => computeAutoFit());
-  else { applyTransform(); pinControls(); }
+  else applyTransform();
 
   containerEl._teardownGraphZoom = () => {
     window.removeEventListener('scroll', onScrollOrResize);
     window.removeEventListener('resize', onScrollOrResize);
-    unpinControls();
+    // no pinned controls to remove
   };
 }
 
 // ===============================
-// Table Rendering (injects graph + table)
+// Table Rendering (injects graph + table + reset button)
 // ===============================
 function renderTable(chainObj, rootItem, rate) {
   const { chain, machineTotals, extractorTotals } = chainObj;
@@ -664,12 +608,15 @@ function renderTable(chainObj, rootItem, rate) {
     try { prevWrapper._teardownGraphZoom(); } catch (e) { /* ignore */ }
   }
 
+  // Ensure reset button exists and is placed below tables (above graph)
+  const resetContainer = ensureResetButton();
+
   graphArea.innerHTML = graphHTML;
   const wrapper = graphArea.querySelector(".graphWrapper");
 
-  // Ensure a single fixed control bar exists and pass it to setupGraphZoom
-  const controlsEl = ensureGraphControls();
-  setupGraphZoom(wrapper, { autoFit: true, controlsEl });
+  // Pass the reset button element to setupGraphZoom
+  const resetBtn = document.querySelector('#resetViewBtn');
+  setupGraphZoom(wrapper, { autoFit: true, resetButtonEl: resetBtn });
 
   const railSpeed = parseInt(document.getElementById("railSelect").value) || 0;
 
