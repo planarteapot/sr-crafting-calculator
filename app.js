@@ -142,6 +142,39 @@ async function loadRecipes() {
   }
 }
 
+// Minimal fallback recipes for local testing (Titanium / Wolfram)
+const FALLBACK_RECIPES = {
+  "Titanium Bar": {
+    "output": 1,
+    "time": 60,
+    "building": "Smelter",
+    "inputs": { "Titanium Ore": 1 }
+  },
+  "Wolfram Bar": {
+    "output": 1,
+    "time": 60,
+    "building": "Smelter",
+    "inputs": { "Wolfram Ore": 1 }
+  },
+  // Add any other small recipes you want to test
+};
+
+// Use fallback when fetch fails
+async function loadRecipes() {
+  const url = "https://srcraftingcalculations.github.io/sr-crafting-calculator/data/recipes.json";
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to fetch recipes.json");
+    RECIPES = await response.json();
+    return RECIPES;
+  } catch (err) {
+    console.warn("Recipe fetch failed, using fallback recipes for testing:", err);
+    RECIPES = Object.assign({}, FALLBACK_RECIPES);
+    return RECIPES;
+  }
+}
+
+
 function getRecipe(name) {
   return RECIPES[name] || null;
 }
