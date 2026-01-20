@@ -273,6 +273,9 @@ function computeDepths(chain, rootItem) {
   return depths;
 }
 
+/* ===============================
+   Replace: buildGraphData (adds anchor flags)
+   =============================== */
 function buildGraphData(chain, rootItem) {
   const depths = computeDepths(chain, rootItem);
   const nodes = [];
@@ -285,23 +288,291 @@ function buildGraphData(chain, rootItem) {
       id: item,
       label: item,
       depth,
-      raw: data.raw,
+      raw: !!data.raw,
       building: data.building,
       machines: data.machines,
-      inputs: data.inputs
+      inputs: data.inputs,
+      // anchor flags (set later after we know maxDepth)
+      hasInputAnchor: true,
+      hasOutputAnchor: true
     };
     nodes.push(node);
     nodeMap.set(item, node);
   }
 
+  // links (consumer -> input)
   for (const [item, data] of Object.entries(chain)) {
     for (const input of Object.keys(data.inputs || {})) {
       if (nodeMap.has(input)) links.push({ from: item, to: input });
     }
   }
 
+  // Determine anchor rules:
+  // - Raw nodes (no recipe) have no left/input anchor
+  // - Nodes at maximum depth (furthest from root) have no right/output anchor
+  const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
+  for (const node of nodes) {
+    node.hasInputAnchor = !node.raw;               // raw resources: no left anchor
+    node.hasOutputAnchor = (node.depth < maxDepth); // final outputs: no right anchor
+  }
+
   return { nodes, links };
 }
+
+/* ===============================
+   Replace: renderGraph (draw anchors + placeholders)
+   - Adds left/right anchor circles with data-anchor attributes
+   - Adds faint spine placeholder above each depth column
+   =============================== */
+function renderGraph(nodes, links, rootItem) {
+  const nodeRadius = 22;
+  const anchorRadius = 5;
+  const anchorHitRadius = 12; // invisible hit area
+  const isDark = isDarkMode();
+
+  // Group nodes by depth
+  const columns = {};
+  for (const node of nodes) {
+    if (!columns[node.depth]) columns[node.depth] = [];
+    columns[node.depth].push(node);
+  }
+
+  // Layout nodes (left -> right: depth -> x, index -> y)
+  for (const [depth, colNodes] of Object.entries(columns)) {
+    colNodes.sort((a, b) => {
+      const aOut = links.filter(l => l.to === a.id).length;
+      const bOut = links.filter(l => l.to === b.id).length;
+      if (bOut !== aOut) return bOut - aOut;
+      return (a.label || a.id).localeCompare(b.label || b.id);
+    });
+    colNodes.forEach((node, i) => {
+      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;   // horizontal spacing per depth (columns)
+      node.y = i * GRAPH_ROW_HEIGHT + 100;              // vertical spacing per index (rows)
+    });
+  }
+
+  // Compute content bounds
+  const xs = nodes.map(n => n.x);
+  const ys = nodes.map(n => n.y);
+  const minX = nodes.length ? Math.min(...xs) : 0;
+  const maxX = nodes.length ? Math.max(...xs) : 0;
+  const minY = nodes.length ? Math.min(...ys) : 0;
+  const maxY = nodes.length ? Math.max(...ys) : 0;
+
+  const contentX = minX - nodeRadius - GRAPH_CONTENT_PAD;
+  const contentY = minY - nodeRadius - GRAPH_CONTENT_PAD;
+  const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
+  const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
+
+  // Build inner SVG
+  let inner = '';
+
+  // Spine placeholders (one per depth column) - faint vertical guide and helper placeholder area
+  for (const depthKey of Object.keys(columns)) {
+    const depth = Number(depthKey);
+    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
+    const topY = minY - GRAPH_ROW_HEIGHT;
+    const bottomY = maxY + GRAPH_ROW_HEIGHT;
+    inner += `
+      <g class="spine-placeholder" data-depth="${depth}">
+        <line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${bottomY}"
+              stroke="${isDark ? '#2b2b2b' : '#e9e9e9'}" stroke-width="1" stroke-dasharray="4 6" opacity="0.35" pointer-events="none" />
+        <!-- helper placeholder area (above nodes) -->
+        <rect x="${spineX - 18}" y="${topY - 44}" width="36" height="28" rx="6" ry="6"
+              fill="${isDark ? '#222' : '#fff'}" stroke="${isDark ? '#444' : '#ddd'}" stroke-width="1" opacity="0.6" pointer-events="none" />
+      </g>
+    `;
+  }
+
+  // Edges (unchanged)
+  for (const link of links) {
+    const from = nodes.find(n => n.id === link.from);
+    const to = nodes.find(n => n.id === link.to);
+    if (!from || !to) continue;
+
+    inner += `
+      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
+            x1="${from.x}" y1="${from.y}"
+            x2="${to.x}" y2="${to.y}"
+            stroke="#999" stroke-width="2" stroke-linecap="round" />
+    `;
+  }
+
+  // Nodes + anchors
+  for (const node of nodes) {
+    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
+    const strokeColor = "#2c3e50";
+    const textColor = getTextColor(fillColor);
+    const labelY = node.y - GRAPH_LABEL_OFFSET;
+
+    inner += `
+      <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
+        <text class="nodeLabel" x="${node.x}" y="${labelY}"
+              text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
+          ${escapeHtml(node.label)}
+        </text>
+
+        <circle class="graph-node-circle" data-id="${escapeHtml(node.id)}" cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
+                fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
+
+        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" pointer-events="none" />`}
+
+        <text class="nodeNumber" x="${node.x}" y="${node.y}"
+              text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
+          ${node.raw ? "" : Math.ceil(node.machines)}
+        </text>
+    `;
+
+    // Left input anchor (if present)
+    if (node.hasInputAnchor) {
+      const ax = node.x - nodeRadius - 10;
+      const ay = node.y;
+      inner += `
+        <g class="anchor anchor-left" data-node="${escapeHtml(node.id)}" data-side="left" transform="translate(${ax},${ay})" tabindex="0" role="button" aria-label="Input anchor for ${escapeHtml(node.label)}">
+          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
+          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+        </g>
+      `;
+    }
+
+    // Right output anchor (if present)
+    if (node.hasOutputAnchor) {
+      const bx = node.x + nodeRadius + 10;
+      const by = node.y;
+      inner += `
+        <g class="anchor anchor-right" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${bx},${by})" tabindex="0" role="button" aria-label="Output anchor for ${escapeHtml(node.label)}">
+          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
+          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+        </g>
+      `;
+    }
+
+    inner += `</g>`;
+  }
+
+  const viewBoxX = Math.floor(contentX);
+  const viewBoxY = Math.floor(contentY);
+  const viewBoxW = Math.ceil(contentW);
+  const viewBoxH = Math.ceil(contentH);
+
+  const svg = `
+    <div class="graphWrapper" data-vb="${viewBoxX},${viewBoxY},${viewBoxW},${viewBoxH}">
+      <div class="graphViewport">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             class="graphSVG"
+             viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}"
+             preserveAspectRatio="xMidYMid meet">
+          <g id="zoomLayer">
+            ${inner}
+          </g>
+        </svg>
+      </div>
+    </div>
+  `;
+  return svg;
+}
+
+/* ===============================
+   New: Anchor API + handlers (minimal)
+   - createAnchor(nodeId, side) / removeAnchor(nodeId, side)
+   - getAnchorPosition(nodeId, side) -> {x,y} in SVG coords
+   - attachAnchorHandlers(wrapper) to emit events for future wiring
+   =============================== */
+
+function createAnchor(nodeId, side) {
+  // Toggle the flag in the in-memory node model if available
+  // This function assumes you keep a global reference to the last-built nodes array (e.g., window._lastGraphNodes)
+  const nodes = window._lastGraphNodes || [];
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return false;
+  if (side === 'left') node.hasInputAnchor = true;
+  if (side === 'right') node.hasOutputAnchor = true;
+  return true;
+}
+
+function removeAnchor(nodeId, side) {
+  const nodes = window._lastGraphNodes || [];
+  const node = nodes.find(n => n.id === nodeId);
+  if (!node) return false;
+  if (side === 'left') node.hasInputAnchor = false;
+  if (side === 'right') node.hasOutputAnchor = false;
+  return true;
+}
+
+function getAnchorPosition(nodeId, side) {
+  // Returns { x, y } in SVG user coordinates for the anchor dot center, or null
+  const svg = document.querySelector('svg.graphSVG');
+  if (!svg) return null;
+  const anchorEl = svg.querySelector(`g.anchor[data-node="${CSS.escape(nodeId)}"][data-side="${side}"]`);
+  if (!anchorEl) return null;
+  // anchorEl is a <g transform="translate(x,y)">; parse transform
+  const transform = anchorEl.getAttribute('transform') || '';
+  const m = transform.match(/translate\(\s*([-\d.]+)[ ,]+([-\d.]+)\s*\)/);
+  if (!m) return null;
+  return { x: Number(m[1]), y: Number(m[2]) };
+}
+
+function attachAnchorHandlers(wrapper) {
+  if (!wrapper) return;
+  const svg = wrapper.querySelector('svg.graphSVG');
+  if (!svg) return;
+
+  // Hover: dispatch custom event with anchor info
+  svg.querySelectorAll('g.anchor').forEach(anchor => {
+    anchor.addEventListener('mouseenter', (ev) => {
+      const nodeId = anchor.getAttribute('data-node');
+      const side = anchor.getAttribute('data-side');
+      const evt = new CustomEvent('anchorHover', { detail: { nodeId, side } });
+      wrapper.dispatchEvent(evt);
+      // visual hover cue
+      anchor.querySelector('.anchor-dot')?.classList.add('anchor-hover');
+    });
+    anchor.addEventListener('mouseleave', (ev) => {
+      const nodeId = anchor.getAttribute('data-node');
+      const side = anchor.getAttribute('data-side');
+      const evt = new CustomEvent('anchorHoverEnd', { detail: { nodeId, side } });
+      wrapper.dispatchEvent(evt);
+      anchor.querySelector('.anchor-dot')?.classList.remove('anchor-hover');
+    });
+
+    // Click: dispatch anchorClick for wiring UI
+    anchor.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const nodeId = anchor.getAttribute('data-node');
+      const side = anchor.getAttribute('data-side');
+      const evt = new CustomEvent('anchorClick', { detail: { nodeId, side } });
+      wrapper.dispatchEvent(evt);
+    });
+
+    // Keyboard support
+    anchor.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        const nodeId = anchor.getAttribute('data-node');
+        const side = anchor.getAttribute('data-side');
+        const evt = new CustomEvent('anchorClick', { detail: { nodeId, side } });
+        wrapper.dispatchEvent(evt);
+      }
+    });
+  });
+}
+
+/* ===============================
+   Integration note
+   - After you call renderGraph(...) and insert the returned HTML into the DOM,
+     set window._lastGraphNodes = nodes; then call attachAnchorHandlers(wrapperEl)
+   Example:
+     const html = renderGraph(nodes, links, rootItem);
+     document.getElementById('graphArea').innerHTML = html;
+     window._lastGraphNodes = nodes;
+     attachAnchorHandlers(document.querySelector('.graphWrapper'));
+   =============================== */
 
 /* ===============================
    Inject minimal pulse CSS via JS (optional)
