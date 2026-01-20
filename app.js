@@ -334,10 +334,11 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (force BBM into the bars/blocks column)
-   - Finds the depth used by canonical smelter outputs and forces BBM there
-   - BBM behaves like a smelter target: hide left anchor, show right anchor
-   - Draws only far-left raw -> Smelter or BBM lines
+   renderGraph (helper dots reintroduced)
+   - Shows anchor helper dots for all nodes except:
+     * raw nodes in the far-left column (no helper dots)
+     * BBM left anchor (BBM behaves like a smelter target)
+   - Draws direct node->node wires only for far-left raw sources to Smelters or BBM
    - Columns sorted alphabetically top->bottom
    =============================== */
 function renderGraph(nodes, links, rootItem) {
@@ -349,10 +350,9 @@ function renderGraph(nodes, links, rootItem) {
   const BBM_ID = 'Basic Building Material';
   const TARGET_SMELTER_OUTPUTS = ['Calcium Block', 'Titanium Bar', 'Wolfram Bar'];
 
-  // --- If any of the canonical smelter outputs exist, compute their column (depth) and force BBM there ---
+  // If canonical smelter outputs exist, force BBM into their column (keeps BBM aligned with bars/blocks)
   const targetNodes = nodes.filter(n => TARGET_SMELTER_OUTPUTS.includes(n.id));
   if (targetNodes.length > 0) {
-    // choose the most common depth among them (mode) to be robust
     const depthCounts = {};
     for (const n of targetNodes) {
       if (typeof n.depth === 'number') depthCounts[n.depth] = (depthCounts[n.depth] || 0) + 1;
@@ -366,7 +366,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // --- Group nodes by depth ---
+  // Group nodes by depth
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
@@ -442,17 +442,17 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Nodes + anchors
+  // Nodes + anchors (helper dots reintroduced for everything else)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
     const textColor = getTextColor(fillColor);
     const labelY = node.y - GRAPH_LABEL_OFFSET;
 
-    // Hide helper dots for leftmost raw nodes
+    // Hide helper dots for leftmost raw nodes only
     const hideAllAnchors = (node.raw && node.depth === minDepth);
 
-    // BBM special behavior: treat like smelter target (hide left anchor, show right anchor)
+    // BBM special rule: hide left anchor, always show right anchor
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
     const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isBBM;
     const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM);
@@ -477,6 +477,7 @@ function renderGraph(nodes, links, rootItem) {
         </text>
     `;
 
+    // Left input anchor (render for all nodes except leftmost raw and BBM)
     if (showLeftAnchor) {
       const ax = node.x - nodeRadius - 10;
       const ay = node.y;
@@ -488,6 +489,7 @@ function renderGraph(nodes, links, rootItem) {
       `;
     }
 
+    // Right output anchor (render for all nodes except leftmost raw)
     if (showRightAnchor) {
       const bx = node.x + nodeRadius + 10;
       const by = node.y;
