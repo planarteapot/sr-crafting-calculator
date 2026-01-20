@@ -1007,9 +1007,7 @@ function setupDarkMode() {
 /* ===============================
    Initialization
    =============================== */
-/* ===============================
-   Initialization
-   =============================== */
+
 async function init() {
   setupDarkMode();
   const data = await loadRecipes();
