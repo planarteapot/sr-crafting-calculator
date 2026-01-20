@@ -334,9 +334,10 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (BBM special case)
-   - Forces "Basic Building Material" node to depth 0 (leftmost column)
-   - Treats BBM like a smelter: hides its left anchor, shows only right helper dot
+   renderGraph (BBM forced to level 0 semantics)
+   - Places BBM in the column that corresponds to nodes with level === 0
+   - If no nodes have level, falls back to leftmost column (minDepth)
+   - BBM behaves like a smelter target: hide left anchor, show right anchor
    - Draws direct node->node wires only for far-left raw sources to Smelters OR to BBM
    - Columns sorted alphabetically top->bottom
    =============================== */
@@ -346,12 +347,49 @@ function renderGraph(nodes, links, rootItem) {
   const anchorHitRadius = 12;
   const isDark = isDarkMode();
 
-  // Ensure BBM is always in the leftmost column (depth 0)
   const BBM_ID = 'Basic Building Material';
-  const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
-  if (bbmNode) bbmNode.depth = 0;
 
-  // Group nodes by depth (after forcing BBM depth)
+  // --- Determine target depth for "level 0" ---
+  // If nodes include a numeric `level` property, find the depth used by level 0 nodes.
+  // Otherwise, fall back to the leftmost depth (minDepth).
+  let targetDepthForLevel0 = null;
+  const nodesWithLevel0 = nodes.filter(n => n.level === 0);
+  if (nodesWithLevel0.length > 0) {
+    // If any nodes already have depth assigned, use their depth as the target column
+    const depthsForLevel0 = nodesWithLevel0.map(n => (typeof n.depth === 'number' ? n.depth : Infinity)).filter(d => isFinite(d));
+    if (depthsForLevel0.length > 0) {
+      targetDepthForLevel0 = Math.min(...depthsForLevel0);
+    } else {
+      // If no depth assigned yet, we'll compute depths first and then set BBM below
+      targetDepthForLevel0 = null;
+    }
+  }
+
+  // Group nodes by depth (if depths not set yet, compute a temporary layout first)
+  // If depths are missing, assume computeDepths has been run earlier; otherwise compute a simple fallback
+  if (!nodes.some(n => typeof n.depth === 'number')) {
+    // fallback: assign depth 0 to raw nodes, 1 to their consumers (simple)
+    const minDepthFallback = 0;
+    for (const n of nodes) {
+      n.depth = n.raw ? minDepthFallback : (n.depth ?? minDepthFallback + 1);
+    }
+  }
+
+  // If we didn't determine targetDepthForLevel0 earlier, try now from nodes with level 0
+  if (targetDepthForLevel0 === null && nodesWithLevel0.length > 0) {
+    const depthsForLevel0 = nodesWithLevel0.map(n => n.depth ?? Infinity).filter(d => isFinite(d));
+    if (depthsForLevel0.length > 0) targetDepthForLevel0 = Math.min(...depthsForLevel0);
+  }
+
+  // If still null, fall back to leftmost depth
+  const currentMinDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
+  if (targetDepthForLevel0 === null) targetDepthForLevel0 = currentMinDepth;
+
+  // Force BBM node depth to the target depth (level 0 column)
+  const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
+  if (bbmNode) bbmNode.depth = targetDepthForLevel0;
+
+  // Re-group nodes by depth after forcing BBM
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
@@ -436,7 +474,7 @@ function renderGraph(nodes, links, rootItem) {
     // Hide helper dots for leftmost raw nodes
     const hideAllAnchors = (node.raw && node.depth === minDepth);
 
-    // Special BBM anchor rule: BBM behaves like a smelter ore target:
+    // Special BBM anchor rule: BBM behaves like a smelter target:
     // - hide its left anchor (no helper dot on left)
     // - always show its right output helper dot
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
