@@ -439,11 +439,7 @@ function renderTable(chainObj, rootItem, rate) {
 // ===============================
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
-  // Detect theme for adaptive halo text
   const isDark = document.body.classList.contains("dark-mode");
-
-  const labelFill = isDark ? "#ffffff" : "#000000";   // text color
-  const labelStroke = isDark ? "#000000" : "#ffffff"; // halo outline
 
   const columns = {};
   for (const node of nodes) {
@@ -455,7 +451,6 @@ function renderGraph(nodes, links, rootItem) {
   const rowHeight = 90;
 
   for (const [depth, colNodes] of Object.entries(columns)) {
-    // Sort by number of outgoing links (more consumers = higher)
     colNodes.sort((a, b) => {
       const aOut = links.filter(l => l.to === a.id).length;
       const bOut = links.filter(l => l.to === b.id).length;
@@ -469,19 +464,21 @@ function renderGraph(nodes, links, rootItem) {
   }
 
   // Compute dynamic SVG size based on node positions
-  const maxX = Math.max(...nodes.map(n => n.x));
-  const maxY = Math.max(...nodes.map(n => n.y));
+  const maxX = nodes.length ? Math.max(...nodes.map(n => n.x)) : 0;
+  const maxY = nodes.length ? Math.max(...nodes.map(n => n.y)) : 0;
 
-  const svgWidth = maxX + 200;   // padding on the right
-  const svgHeight = maxY + 200;  // padding below the lowest node
+  const svgWidth = Math.max(800, maxX + 200);   // ensure a sensible minimum width
+  const svgHeight = Math.max(300, maxY + 200);  // ensure a sensible minimum height
 
-  let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
+  // Build SVG content (same as before)
+  let svgContent = '';
 
   for (const link of links) {
     const from = nodes.find(n => n.id === link.from);
     const to = nodes.find(n => n.id === link.to);
+    if (!from || !to) continue;
 
-    svg += `
+    svgContent += `
       <line x1="${from.x}" y1="${from.y}"
             x2="${to.x}" y2="${to.y}"
             stroke="#999" stroke-width="2" />
@@ -490,39 +487,34 @@ function renderGraph(nodes, links, rootItem) {
 
   for (const node of nodes) {
     const fillColor = node.raw
-      ? "#f4d03f" // RAW
+      ? "#f4d03f"
       : MACHINE_COLORS[node.building] || "#95a5a6";
 
     const strokeColor = "#2c3e50";
-
     const textColor = getTextColor(fillColor);
 
-    svg += `
+    svgContent += `
       <g>
-        <!-- Label text with halo -->
         <text x="${node.x}" y="${node.y - 30}"
               text-anchor="middle" font-size="12" font-weight="600"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="0.6"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6"
               paint-order="stroke">
           ${node.label}
         </text>
 
-        <!-- Node circle -->
         <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
                 fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
 
-        <!-- Machine count background -->
         ${node.raw ? "" : (
           `<rect x="${node.x - 12}" y="${node.y - 8}" width="24" height="16"
                  fill="${fillColor}" rx="3" ry="3" />`
         )}
 
-        <!-- Machine count text with halo -->
         <text x="${node.x}" y="${node.y + 4}"
               text-anchor="middle" font-size="12" font-weight="600"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="0.6"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6"
               paint-order="stroke">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
@@ -530,10 +522,21 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-  svg += `</svg>`;
-  return svg;
-}
+  // Wrap SVG in a scrollable container. Use viewBox so it can scale if needed,
+  // but keep the SVG's intrinsic width so horizontal scrolling works.
+  const wrapper = `
+    <div class="graphWrapper">
+      <svg xmlns="http://www.w3.org/2000/svg"
+           width="${svgWidth}" height="${svgHeight}"
+           viewBox="0 0 ${svgWidth} ${svgHeight}"
+           preserveAspectRatio="xMinYMid meet">
+        ${svgContent}
+      </svg>
+    </div>
+  `;
 
+  return wrapper;
+}
 
 // ===============================
 // Calculator Trigger

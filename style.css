@@ -167,6 +167,39 @@ table td {
   fill: #333;
 }
 
+/* Graph wrapper: constrain to viewport and allow scrolling */
+.graphWrapper {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  /* Limit height so graph "fits" inside the browser window.
+     Adjust the subtraction value if you have a tall header/footer. */
+  max-height: calc(100vh - 220px);
+  overflow-x: auto;   /* allow horizontal scrolling when SVG is wider */
+  overflow-y: auto;   /* allow vertical scrolling if SVG is taller than max-height */
+  padding: 8px;
+  border-radius: 6px;
+}
+
+/* Ensure the SVG renders at its intrinsic width (so horizontal scroll works)
+   but still scales down if the container is narrower (preserveAspectRatio handles it). */
+.graphWrapper svg {
+  display: block;
+  /* Do not force max-width:100% here — we want the SVG to keep its intrinsic width
+     so the wrapper can provide a horizontal scrollbar when needed. */
+  max-width: none;
+}
+
+/* Optional: make scrollbars less intrusive (modern browsers) */
+.graphWrapper::-webkit-scrollbar {
+  height: 10px;
+  width: 10px;
+}
+.graphWrapper::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.2);
+  border-radius: 6px;
+}
+
 /* ============================
    DARK MODE
 ============================ */
