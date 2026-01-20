@@ -25,14 +25,9 @@ header {
   box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
 }
 
-#headerBanner {
-  display: none;
-}
+#headerBanner { display: none; }
 
-header > *:not(#headerBanner) {
-  position: absolute;
-  z-index: 2;
-}
+header > *:not(#headerBanner) { position: absolute; z-index: 2; }
 
 #logoBox {
   top: 50%;
@@ -48,23 +43,11 @@ header > *:not(#headerBanner) {
   backdrop-filter: blur(4px);
 }
 
-#siteLogo {
-  height: 45px;
-  width: auto;
-  display: block;
-}
+#siteLogo { height: 45px; width: auto; display: block; }
 
-#titleBox {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
+#titleBox { top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 
-#titleBox img {
-  height: 70px;
-  object-fit: contain;
-}
+#titleBox img { height: 70px; object-fit: contain; }
 
 #darkModeToggle {
   top: 50%;
@@ -78,11 +61,7 @@ header > *:not(#headerBanner) {
   font-weight: bold;
   transition: all 0.3s ease;
 }
-
-#darkModeToggle:hover {
-  background: #ffffff;
-  transform: translateY(-50%) scale(1.05);
-}
+#darkModeToggle:hover { background: #ffffff; transform: translateY(-50%) scale(1.05); }
 
 @media (max-width: 480px) {
   #logoBox { left: 10px; padding: 4px; }
@@ -93,12 +72,7 @@ header > *:not(#headerBanner) {
 /* ============================
    Controls
 ============================ */
-#controls {
-  margin: 20px 0;
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
+#controls { margin: 20px 0; display: flex; gap: 10px; align-items: center; }
 
 button {
   padding: 6px 12px;
@@ -107,21 +81,10 @@ button {
   background: #ddd;
   transition: background 0.3s;
 }
+button:hover { background: #ccc; }
 
-button:hover {
-  background: #ccc;
-}
-
-#tableContainer {
-  text-align: center;
-}
-
-/* Make the controls shrink to content and align with the table container */
-#controls {
-  display: inline-block;
-  text-align: left;
-  margin-bottom: 20px;
-}
+#tableContainer { text-align: center; }
+#controls { display: inline-block; text-align: left; margin-bottom: 20px; }
 
 /* ============================
    Table Styling
@@ -133,87 +96,58 @@ table {
   color: #222;
   margin-top: 20px;
 }
-
-table th {
-  background: #2f4f4f;
-  color: white;
-  padding: 8px;
-}
-
-table td {
-  padding: 6px 10px;
-  border: 1px solid #ccc;
-}
+table th { background: #2f4f4f; color: white; padding: 8px; }
+table td { padding: 6px 10px; border: 1px solid #ccc; }
 
 /* ============================
    Graph Area
 ============================ */
-#graphArea {
-  margin-top: 40px;
-}
-
-#graphArea svg text {
-  fill: #333;
-}
+#graphArea { margin-top: 40px; }
+#graphArea svg text { fill: #333; }
 
 /* ============================
    Graph wrapper: auto-fit + pan/zoom
    (initially no scrollbars; panning via transform)
-   The SVG viewBox is set to a padded content bbox so panning/zooming
-   never clips nodes. Controls are fixed outside the graph viewport.
 ============================ */
 .graphWrapper {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   max-height: calc(100vh - 220px);
-  overflow: hidden; /* hide scrollbars; panning handled by transform */
+  overflow: hidden;
   padding: 8px;
+  padding-top: 64px; /* reserve space for fixed controls */
   border-radius: 6px;
   background: rgba(255,255,255,0.02);
 }
 
-/* Ensure SVG fills the wrapper and respects viewBox (auto-fit) */
-.graphWrapper .graphViewport {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-.graphWrapper svg.graphSVG {
-  width: 100%;
-  height: auto;
-  display: block;
-  user-select: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
-}
+.graphWrapper .graphViewport { width: 100%; height: 100%; display: block; }
+.graphWrapper svg.graphSVG { width: 100%; height: auto; display: block; user-select: none; -webkit-user-select: none; -ms-user-select: none; }
 
-/* Controls row (visual styling) */
-.graphControls {
+/* ============================
+   Fixed control bar (outside the graph)
+============================ */
+.graphControlsFixed {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  top: 12px; /* JS will adjust to sit below header */
+  z-index: 12000;
   display: flex;
   gap: 8px;
   align-items: center;
   justify-content: center;
-  margin-bottom: 8px;
-  background: rgba(255,255,255,0.95);
+  background: rgba(255,255,255,0.96);
   padding: 6px 10px;
   border-radius: 8px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.08);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.12);
   pointer-events: auto;
-  z-index: 9999;
 }
 
-/* When JS pins controls, it sets inline position styles.
-   This class keeps visual consistency if needed. */
-.graphControls.fixed {
-  position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 9999;
-}
+.graphControls { display: none; } /* hide in-wrapper controls if any */
 
-/* Buttons and slider */
-.graphControls .zoomBtn {
+.graphControlsFixed .zoomSlider { width: 260px; }
+.graphControlsFixed .zoomBtn {
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid rgba(0,0,0,0.08);
@@ -221,16 +155,10 @@ table td {
   cursor: pointer;
   font-size: 16px;
 }
-.graphControls .zoomBtn:hover { filter: brightness(0.98); }
-
-.graphControls .zoomSlider {
-  width: 220px;
-}
+.graphControlsFixed .zoomBtn:hover { filter: brightness(0.98); }
 
 /* Viewport holds the SVG */
-.graphViewport {
-  overflow: visible;
-}
+.graphViewport { overflow: visible; }
 
 /* Cursor styles for panning */
 .graphSVG { cursor: grab; display: block; }
@@ -243,43 +171,14 @@ table td {
 /* ============================
    DARK MODE
 ============================ */
-body.dark {
-  background: #1e1e1e;
-  color: #ddd;
-}
-
-body.dark button {
-  background: #444;
-  color: #eee;
-  border-color: #666;
-}
-
-body.dark button:hover {
-  background: #555;
-}
-
-body.dark table {
-  background: #2a2a2a;
-  color: #ddd;
-}
-
-body.dark table th {
-  background: #444;
-  color: #fff;
-}
-
-body.dark table td {
-  border: 1px solid #555;
-}
-
-body.dark #graphArea svg text {
-  fill: #ddd;
-}
-
-body.dark #logoBox {
-  background: rgba(0, 0, 0, 0.65);
-  border-color: rgba(255,255,255,0.15);
-}
+body.dark { background: #1e1e1e; color: #ddd; }
+body.dark button { background: #444; color: #eee; border-color: #666; }
+body.dark button:hover { background: #555; }
+body.dark table { background: #2a2a2a; color: #ddd; }
+body.dark table th { background: #444; color: #fff; }
+body.dark table td { border: 1px solid #555; }
+body.dark #graphArea svg text { fill: #ddd; }
+body.dark #logoBox { background: rgba(0, 0, 0, 0.65); border-color: rgba(255,255,255,0.15); }
 
 /* ============================
    TOAST
@@ -293,7 +192,6 @@ body.dark #logoBox {
   gap: 10px;
   z-index: 9999;
 }
-
 .toast {
   padding: 12px 18px;
   border-radius: 6px;
@@ -305,28 +203,11 @@ body.dark #logoBox {
   transform: translateY(20px);
   transition: opacity 0.3s ease, transform 0.3s ease;
 }
+body.dark .toast { background: rgba(255, 255, 255, 0.85); color: black; }
+.toast.show { opacity: 1; transform: translateY(0); }
 
-body.dark .toast {
-  background: rgba(255, 255, 255, 0.85);
-  color: black;
-}
+/* Accessibility & small tweaks */
+.graphControlsFixed .zoomBtn:focus,
+.graphControlsFixed .zoomSlider:focus { outline: 2px solid rgba(0, 120, 215, 0.6); outline-offset: 2px; }
 
-.toast.show {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* ============================
-   Accessibility & small tweaks
-============================ */
-/* Make zoom controls keyboard-focus friendly */
-.graphControls .zoomBtn:focus,
-.graphControls .zoomSlider:focus {
-  outline: 2px solid rgba(0, 120, 215, 0.6);
-  outline-offset: 2px;
-}
-
-/* Reduce motion for users who prefer reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
-}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
