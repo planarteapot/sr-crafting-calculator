@@ -1,7 +1,10 @@
 // ===============================
-// app.js - Merged with raw-left node-to-node wiring
-// - Preserves original working file behavior
-// - Adds: raw-left nodes hide helper dots and draw direct node->node wires to consumers
+// app.js - Full updated script (final fixes)
+// - Clicking anywhere in a node highlights only its immediate inputs
+// - Clicking the same node again clears pulses (toggle off)
+// - Prevents the black focus box by inline styles and pointer-events on children
+// - Drag threshold prevents accidental activation while panning
+// - Left->right layout retained
 // ===============================
 
 /* ===============================
@@ -65,9 +68,7 @@ function showToast(message) {
   }, 2500);
 }
 
-/* ===============================
-   Info bubble behavior (unchanged)
-   =============================== */
+// Info bubble behavior
 (function () {
   const infoBtn = document.getElementById('infoButton');
   const infoPanel = document.getElementById('infoPanel');
@@ -77,12 +78,19 @@ function showToast(message) {
   if (!infoBtn || !infoPanel) return;
 
   function openPanel() {
+    // Position panel to the left of the item select (or fallback near the button)
     const btnRect = infoBtn.getBoundingClientRect();
+    const containerRect = document.getElementById('tableContainer')?.getBoundingClientRect() || document.body.getBoundingClientRect();
+
+    // Prefer placing panel below the controls and aligned with the button
     infoPanel.style.top = (window.scrollY + btnRect.bottom + 8) + 'px';
     infoPanel.style.left = (window.scrollX + btnRect.left) + 'px';
+
     infoPanel.classList.add('open');
     infoPanel.setAttribute('aria-hidden', 'false');
     infoBtn.setAttribute('aria-expanded', 'true');
+
+    // Move focus into panel for accessibility
     infoClose.focus();
   }
 
@@ -100,16 +108,19 @@ function showToast(message) {
 
   infoClose.addEventListener('click', closePanel);
 
+  // Close on outside click
   document.addEventListener('click', function (e) {
     if (!infoPanel.classList.contains('open')) return;
     if (infoPanel.contains(e.target) || infoBtn.contains(e.target)) return;
     closePanel();
   });
 
+  // Close on Escape
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && infoPanel.classList.contains('open')) closePanel();
   });
 
+  // Reposition on resize/scroll for robustness
   window.addEventListener('resize', function () {
     if (infoPanel.classList.contains('open')) openPanel();
   });
@@ -129,13 +140,11 @@ async function loadRecipes() {
   try {
     const response = await fetch(url, { cache: "no-store" });
     if (!response.ok) throw new Error("Failed to fetch recipes.json");
-    RECIPES = await response.json();
-    return RECIPES;
+    return await response.json();
   } catch (err) {
     console.error("Error loading recipes:", err);
     const out = document.getElementById("outputArea");
     if (out) out.innerHTML = `<p style="color:red;">Error loading recipe data. Please try again later.</p>`;
-    RECIPES = {};
     return {};
   }
 }
@@ -145,7 +154,7 @@ function getRecipe(name) {
 }
 
 /* ===============================
-   Expand production chain (original)
+   Expand production chain
    =============================== */
 function expandChain(item, targetRate) {
   const chain = {};
@@ -264,9 +273,6 @@ function computeDepths(chain, rootItem) {
   return depths;
 }
 
-/* ===============================
-   buildGraphData (adds anchor flags and smelter special case)
-   =============================== */
 function buildGraphData(chain, rootItem) {
   const depths = computeDepths(chain, rootItem);
   const nodes = [];
@@ -279,58 +285,18 @@ function buildGraphData(chain, rootItem) {
       id: item,
       label: item,
       depth,
-      raw: !!data.raw,
+      raw: data.raw,
       building: data.building,
       machines: data.machines,
-      inputs: data.inputs,
-      // anchor flags (set below)
-      hasInputAnchor: true,
-      hasOutputAnchor: true
+      inputs: data.inputs
     };
     nodes.push(node);
     nodeMap.set(item, node);
   }
 
-  // links (consumer -> input)
   for (const [item, data] of Object.entries(chain)) {
     for (const input of Object.keys(data.inputs || {})) {
       if (nodeMap.has(input)) links.push({ from: item, to: input });
-    }
-  }
-
-  // Determine anchor rules:
-  // - Raw nodes (no recipe) have no left/input anchor
-  // - Nodes at maximum depth (furthest from root) have no right/output anchor
-  const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
-  for (const node of nodes) {
-    node.hasInputAnchor = !node.raw;                // raw resources: no left anchor by default
-    node.hasOutputAnchor = (node.depth < maxDepth); // final outputs: no right anchor
-  }
-
-  // --- special anchor rules for raw -> smelter direct connections ---
-  // Helper to check if an item in the chain is a raw extractor
-  function isExtractorItem(itemName) {
-    const entry = chain[itemName];
-    return !!(entry && entry.raw);
-  }
-
-  for (const node of nodes) {
-    // Ensure raw sources always expose an output anchor (they produce something)
-    if (node.raw) {
-      node.hasInputAnchor = false;
-      node.hasOutputAnchor = true;
-    }
-
-    // Special case: smelters that only consume raw resources
-    // If this node's building is "Smelter" and every input is a raw extractor,
-    // hide the left anchor so the raw node can connect directly to the smelter body.
-    if (node.building === 'Smelter') {
-      const inputNames = Object.keys(node.inputs || {});
-      if (inputNames.length > 0 && inputNames.every(inName => isExtractorItem(inName))) {
-        node.hasInputAnchor = false;
-      }
-      // ensure smelter still exposes its output anchor so it can feed rails
-      node.hasOutputAnchor = true;
     }
   }
 
@@ -339,6 +305,7 @@ function buildGraphData(chain, rootItem) {
 
 /* ===============================
    Inject minimal pulse CSS via JS (optional)
+   - keeps animations available; you can remove if you prefer no CSS
    =============================== */
 (function injectPulseStylesIfMissing() {
   if (document.getElementById('graphPulseStyles')) return;
@@ -367,15 +334,12 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (left->right layout)
-   - Draws direct node-to-node wires for raw sources on the far-left (no helper dot)
-   - Draws regular edges for other links (lighter)
-   - Hides anchors for leftmost raw nodes
+   Render graph (left->right layout)
+   - group (<g class="graph-node">) includes inline style to suppress focus box
+   - child label/rect/number set pointer-events="none" so group receives pointer events
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
-  const anchorRadius = 5;
-  const anchorHitRadius = 12;
   const isDark = isDarkMode();
 
   // Group nodes by depth
@@ -414,61 +378,8 @@ function renderGraph(nodes, links, rootItem) {
   // Build inner SVG
   let inner = '';
 
-  // Spine placeholders (one per depth column) - faint vertical guide and helper placeholder area
-  for (const depthKey of Object.keys(columns)) {
-    const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
-    const topY = minY - GRAPH_ROW_HEIGHT;
-    const bottomY = maxY + GRAPH_ROW_HEIGHT;
-    inner += `
-      <g class="spine-placeholder" data-depth="${depth}">
-        <line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${bottomY}"
-              stroke="${isDark ? '#2b2b2b' : '#e9e9e9'}" stroke-width="1" stroke-dasharray="4 6" opacity="0.35" pointer-events="none" />
-        <!-- helper placeholder area (above nodes) -->
-        <rect x="${spineX - 18}" y="${topY - 44}" width="36" height="28" rx="6" ry="6"
-              fill="${isDark ? '#222' : '#fff'}" stroke="${isDark ? '#444' : '#ddd'}" stroke-width="1" opacity="0.6" pointer-events="none" />
-      </g>
-    `;
-  }
-
-  // Determine leftmost depth (minDepth)
-  const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
-
-  // --- Edges: draw direct node-to-node wires for raw sources on the far left ---
-  // We'll track which links we've drawn as raw-direct so we don't duplicate them in the regular edges pass.
-  const drawnRawDirect = new Set();
-
+  // Edges
   for (const link of links) {
-    // links are consumer -> input (consumer consumes input)
-    const rawSource = nodes.find(n => n.id === link.to);
-    const consumer = nodes.find(n => n.id === link.from);
-    if (!rawSource || !consumer) continue;
-
-    // Only draw if the source is a raw extractor and is displayed on the far left
-    if (rawSource.raw && rawSource.depth === minDepth) {
-      // Start at raw node center (node-to-node)
-      const startX = rawSource.x;
-      const startY = rawSource.y;
-
-      // End at consumer center OR at consumer left anchor if present
-      const endX = consumer.hasInputAnchor ? (consumer.x - nodeRadius - 10) : consumer.x;
-      const endY = consumer.y;
-
-      inner += `
-        <line class="graph-edge graph-edge-raw" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}"
-              x1="${startX}" y1="${startY}"
-              x2="${endX}" y2="${endY}"
-              stroke="#333" stroke-width="2.6" stroke-linecap="round" />
-      `;
-      drawnRawDirect.add(`${link.from}::${link.to}`);
-    }
-  }
-
-  // --- Regular edges (lighter) for all other links (skip those already drawn) ---
-  for (const link of links) {
-    const key = `${link.from}::${link.to}`;
-    if (drawnRawDirect.has(key)) continue; // skip duplicates
-
     const from = nodes.find(n => n.id === link.from);
     const to = nodes.find(n => n.id === link.to);
     if (!from || !to) continue;
@@ -477,21 +388,19 @@ function renderGraph(nodes, links, rootItem) {
       <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
             x1="${from.x}" y1="${from.y}"
             x2="${to.x}" y2="${to.y}"
-            stroke="#999" stroke-width="1.6" stroke-linecap="round" opacity="0.85" />
+            stroke="#999" stroke-width="2" stroke-linecap="round" />
     `;
   }
 
-  // Nodes + anchors
+  // Nodes
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
     const textColor = getTextColor(fillColor);
     const labelY = node.y - GRAPH_LABEL_OFFSET;
 
-    // Decide whether to render anchors for this node.
-    // RULE: if node is raw AND node.depth === minDepth, render NO helper dots at all.
-    const hideAllAnchors = (node.raw && node.depth === minDepth);
-
+    // NOTE: inline style "outline:none" prevents the browser focus box around the group.
+    // Child elements have pointer-events="none" so the group receives pointer events reliably.
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
@@ -514,33 +423,8 @@ function renderGraph(nodes, links, rootItem) {
               pointer-events="none">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
+      </g>
     `;
-
-    // Left input anchor (if present and not hidden)
-    if (!hideAllAnchors && node.hasInputAnchor) {
-      const ax = node.x - nodeRadius - 10;
-      const ay = node.y;
-      inner += `
-        <g class="anchor anchor-left" data-node="${escapeHtml(node.id)}" data-side="left" transform="translate(${ax},${ay})" tabindex="0" role="button" aria-label="Input anchor for ${escapeHtml(node.label)}">
-          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
-          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
-        </g>
-      `;
-    }
-
-    // Right output anchor (if present and not hidden)
-    if (!hideAllAnchors && node.hasOutputAnchor) {
-      const bx = node.x + nodeRadius + 10;
-      const by = node.y;
-      inner += `
-        <g class="anchor anchor-right" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${bx},${by})" tabindex="0" role="button" aria-label="Output anchor for ${escapeHtml(node.label)}">
-          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
-          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
-        </g>
-      `;
-    }
-
-    inner += `</g>`;
   }
 
   const viewBoxX = Math.floor(contentX);
@@ -566,7 +450,9 @@ function renderGraph(nodes, links, rootItem) {
 }
 
 /* ===============================
-   Highlighting (unchanged)
+   Highlighting (strict immediate-only, toggle)
+   - Only circle and line elements receive pulse classes
+   - Clicking the same node toggles pulses off
    =============================== */
 function clearPulses(svg) {
   if (!svg) return;
@@ -578,19 +464,23 @@ function clearPulses(svg) {
 function highlightOutgoing(nodeId, svg) {
   if (!svg || !nodeId) return;
 
+  // If origin circle already has pulse-origin, toggle off
   const originCircle = svg.querySelector(`circle.graph-node-circle[data-id="${CSS.escape(nodeId)}"]`);
   if (originCircle && originCircle.classList.contains('pulse-origin')) {
     clearPulses(svg);
     return;
   }
 
+  // Clear previous pulses (only circles/lines)
   clearPulses(svg);
 
+  // Mark origin circle only
   if (originCircle) originCircle.classList.add('pulse-origin');
 
-  // Outgoing edges are lines with data-from = nodeId
+  // Find outgoing edges (consumer -> its inputs)
   const outgoing = Array.from(svg.querySelectorAll(`line.graph-edge[data-from="${CSS.escape(nodeId)}"]`));
 
+  // Immediate inputs only
   outgoing.forEach(edgeEl => {
     edgeEl.classList.add('pulse-edge');
     const toId = edgeEl.getAttribute('data-to');
@@ -600,28 +490,35 @@ function highlightOutgoing(nodeId, svg) {
 }
 
 /* ===============================
-   Pointer handling (unchanged)
+   Pointer handling (centralized on wrapper)
+   - Single pointer handlers on wrapper detect clicks on any child element
+   - Uses pointerId map to track drag vs click per pointer
    =============================== */
 function attachNodePointerHandlers(wrapper) {
   if (!wrapper) return;
   const svg = wrapper.querySelector('svg.graphSVG');
   if (!svg) return;
 
+  // Map pointerId -> { nodeId, startX, startY, isDragging }
   const pointerMap = new Map();
 
   function getThreshold(ev) {
     return (ev && ev.pointerType === 'touch') ? TOUCH_THRESHOLD_PX : DRAG_THRESHOLD_PX;
   }
 
+  // pointerdown on wrapper (capture early)
   wrapper.addEventListener('pointerdown', (ev) => {
+    // find nearest graph-node ancestor of the event target
     const nodeGroup = ev.target.closest && ev.target.closest('g.graph-node[data-id]');
-    if (!nodeGroup) return;
+    if (!nodeGroup) return; // not a node, ignore
+    // stop propagation so global pan doesn't start
     ev.stopPropagation();
     try { nodeGroup.setPointerCapture?.(ev.pointerId); } catch (e) {}
     const nodeId = nodeGroup.getAttribute('data-id');
     pointerMap.set(ev.pointerId, { nodeId, startX: ev.clientX, startY: ev.clientY, isDragging: false });
   }, { passive: false });
 
+  // pointermove on window to track dragging
   window.addEventListener('pointermove', (ev) => {
     const entry = pointerMap.get(ev.pointerId);
     if (!entry) return;
@@ -634,6 +531,7 @@ function attachNodePointerHandlers(wrapper) {
     }
   }, { passive: true });
 
+  // pointerup on wrapper to finalize click vs drag
   wrapper.addEventListener('pointerup', (ev) => {
     const entry = pointerMap.get(ev.pointerId);
     if (!entry) return;
@@ -642,16 +540,19 @@ function attachNodePointerHandlers(wrapper) {
       nodeGroup && nodeGroup.releasePointerCapture?.(ev.pointerId);
     } catch (e) {}
     if (!entry.isDragging) {
+      // confirmed click — highlight immediate inputs (toggle behavior inside)
       highlightOutgoing(entry.nodeId, svg);
     }
     pointerMap.delete(ev.pointerId);
     ev.stopPropagation();
   }, { passive: false });
 
+  // pointercancel cleanup
   wrapper.addEventListener('pointercancel', (ev) => {
     pointerMap.delete(ev.pointerId);
   });
 
+  // keyboard support: Enter/Space on group
   svg.querySelectorAll('g.graph-node[data-id]').forEach(group => {
     group.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
@@ -662,6 +563,7 @@ function attachNodePointerHandlers(wrapper) {
     });
   });
 
+  // clicking outside clears pulses
   function onDocClick(e) {
     if (!svg.contains(e.target)) clearPulses(svg);
   }
@@ -670,32 +572,39 @@ function attachNodePointerHandlers(wrapper) {
 }
 
 /* ===============================
-   Helper: detect if pointer target is a node
+   Helper: detect if pointer target is a node (used to prevent starting pan)
    =============================== */
 function pointerIsOnNode(ev) {
   return !!(ev.target && ev.target.closest && ev.target.closest('g.graph-node[data-id]'));
 }
 
 /* ===============================
-   Zoom / pan utilities (unchanged)
+   Zoom / pan utilities (pointer-based)
+   - pan start is guarded by pointerIsOnNode so nodes handle their own pointers
    =============================== */
 function ensureResetButton() {
   let btn = document.querySelector('.graphResetButton');
   const graphArea = document.getElementById('graphArea');
   if (!graphArea) return null;
 
+  // If button exists but not in the correct place, remove it so we can recreate correctly
   if (btn && btn.nextElementSibling !== graphArea) {
     btn.remove();
     btn = null;
   }
 
+  // Create button container if missing
   if (!btn) {
     btn = document.createElement('div');
     btn.className = 'graphResetButton';
     btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
+
+    // Insert the button directly before the graphArea so it stays above it in document flow
     graphArea.parentNode.insertBefore(btn, graphArea);
+
+    // Minimal inline styles to center the button and keep it out of the graph's interactive area
     btn.style.display = 'flex';
-    btn.style.justifyContent = 'center';
+    btn.style.justifyContent = 'center'; // CENTER the button horizontally
     btn.style.alignItems = 'center';
     btn.style.padding = '8px 12px';
     btn.style.boxSizing = 'border-box';
@@ -704,15 +613,20 @@ function ensureResetButton() {
     btn.style.pointerEvents = 'auto';
   }
 
+  // Ensure the graphArea has top padding so the SVG cannot be panned/zoomed under the button
   function adjustGraphTopPadding() {
     if (!btn || !graphArea) return;
+    // Measure button height after layout
     const h = Math.max(0, btn.offsetHeight || 0);
-    const gap = 8;
+    const gap = 8; // small gap between button and graph
+    // Apply padding-top to graphArea; preserve any existing padding-bottom etc.
     graphArea.style.paddingTop = (h + gap) + 'px';
   }
 
+  // Run once after insertion to set padding
   requestAnimationFrame(() => adjustGraphTopPadding());
 
+  // Keep padding correct on window resize (debounced)
   let resizeTimer = null;
   function onResize() {
     if (resizeTimer) clearTimeout(resizeTimer);
@@ -818,6 +732,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
+  // Wheel zoom
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -826,7 +741,9 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     zoomAt(newScale, ev.clientX, ev.clientY);
   }, { passive: false });
 
+  // Pointer-based pan start (guarded by pointerIsOnNode)
   svg.addEventListener('pointerdown', (ev) => {
+    // If pointer is on a node, do not start pan here (node handlers will manage)
     if (pointerIsOnNode(ev)) return;
     if (ev.button !== 0) return;
     isPanning = true;
@@ -914,99 +831,336 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
 }
 
 /* ===============================
-   Render table + graph helpers (left as in original)
+   Render table + graph
    =============================== */
 function computeRailsNeeded(inputRates, railSpeed) {
   const total = Object.values(inputRates).reduce((sum, val) => sum + val, 0);
-  return railSpeed && railSpeed > 0 ? Math.ceil(total / railSpeed) : 0;
+  return railSpeed && railSpeed > 0 ? Math.ceil(total / railSpeed) : "—";
+}
+
+function renderTable(chainObj, rootItem, rate) {
+  const { chain, machineTotals, extractorTotals } = chainObj;
+  const { nodes, links } = buildGraphData(chain, rootItem);
+  const graphHTML = renderGraph(nodes, links, rootItem);
+
+  const graphArea = document.getElementById("graphArea");
+  if (!graphArea) return;
+
+  const prevWrapper = graphArea.querySelector(".graphWrapper");
+  if (prevWrapper && prevWrapper._teardownGraphZoom) {
+    try { prevWrapper._teardownGraphZoom(); } catch (e) { /* ignore */ }
+  }
+
+  ensureResetButton();
+  graphArea.innerHTML = graphHTML;
+  const wrapper = graphArea.querySelector(".graphWrapper");
+  const resetBtn = document.querySelector('#resetViewBtn');
+  setupGraphZoom(wrapper, { autoFit: true, resetButtonEl: resetBtn });
+
+  // Attach centralized pointer handlers for nodes
+  attachNodePointerHandlers(wrapper);
+
+  const railSpeed = parseInt(document.getElementById("railSelect").value) || 0;
+
+  let html = `
+    <h2>Production chain for ${rate} / min of ${rootItem}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Qty/min</th>
+          <th>Output/machine</th>
+          <th>Machines</th>
+          <th>Machine Type</th>
+          <th>Inputs</th>
+          <th>Rails Needed</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  const tierGroups = {};
+  for (const [item, data] of Object.entries(chain)) {
+    const tier = TIERS[item] ?? 0;
+    if (!tierGroups[tier]) tierGroups[tier] = [];
+    tierGroups[tier].push([item, data]);
+  }
+
+  const sortedTiers = Object.keys(tierGroups).map(Number).sort((a, b) => b - a);
+
+  for (const tier of sortedTiers) {
+    html += `<tr><td colspan="7"><strong>--- Level ${tier} ---</strong></td></tr>`;
+    const rows = tierGroups[tier].sort((a, b) => a[0].localeCompare(b[0]));
+    for (const [item, data] of rows) {
+      if (data.raw) continue;
+      let outputPerMachine = "—";
+      let machines = "—";
+      let railsNeeded = "—";
+      const fillColor = MACHINE_COLORS[data.building] || "#ecf0f1";
+      const textColor = getTextColor(fillColor);
+      if (!data.raw) {
+        const recipe = getRecipe(item);
+        if (recipe) outputPerMachine = Math.ceil((recipe.output * 60) / recipe.time);
+        machines = Math.ceil(data.machines);
+        railsNeeded = computeRailsNeeded(data.inputs, railSpeed);
+      }
+      const inputs = Object.entries(data.inputs || {}).map(([i, amt]) => `${i}: ${Math.ceil(amt)}/min`).join("<br>");
+      html += `
+        <tr>
+          <td>${item}</td>
+          <td>${Math.ceil(data.rate)}</td>
+          <td>${outputPerMachine}</td>
+          <td>${machines}</td>
+          <td style="background-color:${fillColor}; color:${textColor};">
+            ${data.building}
+          </td>
+          <td>${inputs || "—"}</td>
+          <td>${railsNeeded}</td>
+        </tr>
+      `;
+    }
+  }
+
+  html += `</tbody></table>`;
+
+  html += `
+    <h3>MACHINES REQUIRED (total)</h3>
+    <table>
+      <thead><tr><th>Machine Type</th><th>Count</th></tr></thead>
+      <tbody>
+        ${Object.entries(machineTotals).sort((a, b) => b[1] - a[1]).map(([type, count]) => `
+          <tr><td>${type}</td><td>${Math.ceil(count)}</td></tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+
+  html += `
+    <h3>EXTRACTION REQUIRED</h3>
+    <table>
+      <thead>
+        <tr><th>Resource</th><th>Impure</th><th>Normal</th><th>Pure</th><th>Qty/min</th></tr>
+      </thead>
+      <tbody>
+  `;
+
+  const sortedExtractors = Object.entries(extractorTotals).filter(([_, qty]) => qty > 0).sort((a, b) => b[1] - a[1]);
+  for (const [resource, qty] of sortedExtractors) {
+    const rounded = Math.ceil(qty);
+    if (SPECIAL_EXTRACTORS[resource]) {
+      const normal = Math.ceil(rounded / SPECIAL_EXTRACTORS[resource]);
+      html += `<tr><td>${resource}</td><td>—</td><td>${normal}</td><td>—</td><td>${rounded}</td></tr>`;
+    } else {
+      const impure = Math.ceil(rounded / 60);
+      const normal = Math.ceil(rounded / 120);
+      const pure = Math.ceil(rounded / 240);
+      html += `<tr><td>${resource}</td><td>${impure}</td><td>${normal}</td><td>${pure}</td><td>${rounded}</td></tr>`;
+    }
+  }
+
+  html += `</tbody></table>`;
+  const out = document.getElementById("outputArea");
+  if (out) out.innerHTML = html;
 }
 
 /* ===============================
-   Anchor API + handlers (unchanged)
+   Run calculator & UI wiring
    =============================== */
-function createAnchor(nodeId, side) {
-  const nodes = window._lastGraphNodes || [];
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return false;
-  if (side === 'left') node.hasInputAnchor = true;
-  if (side === 'right') node.hasOutputAnchor = true;
-  return true;
+function runCalculator() {
+  const item = document.getElementById('itemSelect').value;
+  const rateRaw = document.getElementById('rateInput').value;
+  const rate = parseFloat(rateRaw);
+
+  if (!item || isNaN(rate) || rate <= 0) {
+    document.getElementById("outputArea").innerHTML = "<p style='color:red;'>Please select an item and enter a valid rate.</p>";
+    return;
+  }
+
+  const chainObj = expandChain(item, rate);
+  renderTable(chainObj, item, rate);
+
+  const rail = document.getElementById("railSelect").value;
+  const params = new URLSearchParams({ item, rate, rail });
+  history.replaceState(null, "", "?" + params.toString());
 }
 
-function removeAnchor(nodeId, side) {
-  const nodes = window._lastGraphNodes || [];
-  const node = nodes.find(n => n.id === nodeId);
-  if (!node) return false;
-  if (side === 'left') node.hasInputAnchor = false;
-  if (side === 'right') node.hasOutputAnchor = false;
-  return true;
-}
-
-function getAnchorPosition(nodeId, side) {
-  const svg = document.querySelector('svg.graphSVG');
-  if (!svg) return null;
-  const anchorEl = svg.querySelector(`g.anchor[data-node="${CSS.escape(nodeId)}"][data-side="${side}"]`);
-  if (!anchorEl) return null;
-  const transform = anchorEl.getAttribute('transform') || '';
-  const m = transform.match(/translate\(\s*([-\d.]+)[ ,]+([-\d.]+)\s*\)/);
-  if (!m) return null;
-  return { x: Number(m[1]), y: Number(m[2]) };
-}
-
-function attachAnchorHandlers(wrapper) {
-  if (!wrapper) return;
-  const svg = wrapper.querySelector('svg.graphSVG');
-  if (!svg) return;
-
-  svg.querySelectorAll('g.anchor').forEach(anchor => {
-    anchor.addEventListener('mouseenter', (ev) => {
-      const nodeId = anchor.getAttribute('data-node');
-      const side = anchor.getAttribute('data-side');
-      const evt = new CustomEvent('anchorHover', { detail: { nodeId, side } });
-      wrapper.dispatchEvent(evt);
-      anchor.querySelector('.anchor-dot')?.classList.add('anchor-hover');
-    });
-    anchor.addEventListener('mouseleave', (ev) => {
-      const nodeId = anchor.getAttribute('data-node');
-      const side = anchor.getAttribute('data-side');
-      const evt = new CustomEvent('anchorHoverEnd', { detail: { nodeId, side } });
-      wrapper.dispatchEvent(evt);
-      anchor.querySelector('.anchor-dot')?.classList.remove('anchor-hover');
-    });
-
-    anchor.addEventListener('click', (ev) => {
-      ev.stopPropagation();
-      const nodeId = anchor.getAttribute('data-node');
-      const side = anchor.getAttribute('data-side');
-      const evt = new CustomEvent('anchorClick', { detail: { nodeId, side } });
-      wrapper.dispatchEvent(evt);
-    });
-
-    anchor.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.key === ' ') {
-        ev.preventDefault();
-        const nodeId = anchor.getAttribute('data-node');
-        const side = anchor.getAttribute('data-side');
-        const evt = new CustomEvent('anchorClick', { detail: { nodeId, side } });
-        wrapper.dispatchEvent(evt);
-      }
-    });
+/* ===============================
+   Dark mode toggle
+   =============================== */
+function setupDarkMode() {
+  const toggle = document.getElementById("darkModeToggle");
+  if (!toggle) return;
+  const saved = localStorage.getItem("darkMode");
+  if (saved === "true") {
+    document.body.classList.add("dark");
+    toggle.textContent = "☀️ Light Mode";
+  } else {
+    toggle.textContent = "🌙 Dark Mode";
+  }
+  toggle.addEventListener("click", () => {
+    const isDark = document.body.classList.toggle("dark");
+    localStorage.setItem("darkMode", isDark);
+    toggle.textContent = isDark ? "☀️ Light Mode" : "🌙 Dark Mode";
   });
 }
 
 /* ===============================
-   Integration note
-   - After you call renderGraph(...) and insert the returned HTML into the DOM,
-     set window._lastGraphNodes = nodes; then call attachAnchorHandlers(wrapperEl)
-   Example:
-     const html = renderGraph(nodes, links, rootItem);
-     document.getElementById('graphArea').innerHTML = html;
-     window._lastGraphNodes = nodes;
-     attachAnchorHandlers(document.querySelector('.graphWrapper'));
-     attachNodePointerHandlers(document.querySelector('.graphWrapper'));
-     setupGraphZoom(document.querySelector('.graphWrapper'), { autoFit: true, resetButtonEl: ensureResetButton() });
+   Initialization
    =============================== */
 
-/* ===============================
-   End of file
-   =============================== */
+async function init() {
+  setupDarkMode();
+  const data = await loadRecipes();
+  RECIPES = data;
+  TIERS = data._tiers || {};
+  TIERS["Basic Building Material"] = 0;
+
+  const itemSelect = document.getElementById('itemSelect');
+  const rateInput = document.getElementById("rateInput");
+  const railSelect = document.getElementById("railSelect");
+
+  if (itemSelect) itemSelect.innerHTML = `<option value="" disabled selected>Select Item Here</option>`;
+  if (railSelect) railSelect.innerHTML = `
+    <option value="120">v1 (120/min)</option>
+    <option value="240">v2 (240/min)</option>
+    <option value="480">v3 (480/min)</option>
+  `;
+  if (rateInput) { rateInput.value = ""; rateInput.dataset.manual = ""; rateInput.placeholder = "Rate (/min)"; }
+
+  if (itemSelect) {
+    Object.keys(RECIPES).filter(k => k !== "_tiers").sort().forEach(item => {
+      const option = document.createElement('option');
+      option.value = item;
+      option.textContent = item;
+      itemSelect.appendChild(option);
+    });
+  }
+
+  // Helper: compute natural/base rate for the currently selected item
+  function getNaturalPerMinForSelected() {
+    const slug = itemSelect?.value;
+    const recipe = RECIPES[slug];
+    if (!recipe || !recipe.output || !recipe.time) return null;
+    return Math.round((recipe.output / recipe.time) * 60);
+  }
+
+  // --- Rate input: allow full backspacing; revert only on blur/Enter/Escape/item change ---
+  if (itemSelect && rateInput) {
+    // When item changes, set rate to natural value only if user hasn't manually set one.
+    itemSelect.addEventListener("change", () => {
+      const naturalPerMin = getNaturalPerMinForSelected();
+      if (!rateInput.dataset.manual) {
+        rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+      }
+      // If the field is empty when switching items, ensure it reverts to the new base immediately
+      if (rateInput.value.trim() === "") {
+        rateInput.dataset.manual = "";
+        rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+      }
+    });
+
+    // Keep user input intact while typing; mark manual when they type a non-empty numeric value
+    rateInput.addEventListener("input", () => {
+      const rawVal = rateInput.value;
+      // If user cleared the field, do not auto-revert here — allow them to type
+      if (rawVal.trim() === "") {
+        // leave dataset.manual as-is so we don't overwrite while focused
+        return;
+      }
+      // If they typed a number, mark as manual so item changes won't overwrite it
+      const numeric = Number(rawVal);
+      if (!Number.isNaN(numeric)) {
+        rateInput.dataset.manual = "true";
+      } else {
+        // non-numeric input: keep it so user can correct it; do not revert
+      }
+    });
+
+    // On blur: if empty, revert to base; otherwise accept value and optionally trigger calculation
+    rateInput.addEventListener("blur", () => {
+      if (rateInput.value.trim() === "") {
+        rateInput.dataset.manual = "";
+        const naturalPerMin = getNaturalPerMinForSelected();
+        rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+      } else {
+        // user provided a value — mark manual and trigger calc if desired
+        rateInput.dataset.manual = "true";
+        // Optionally trigger calculation here:
+        // document.getElementById('calcButton')?.click();
+      }
+    });
+
+    // On Enter: accept value or revert if empty; Escape reverts immediately
+    rateInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        if (rateInput.value.trim() === "") {
+          rateInput.dataset.manual = "";
+          const naturalPerMin = getNaturalPerMinForSelected();
+          rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+        } else {
+          rateInput.dataset.manual = "true";
+          // Optionally trigger calculation here:
+          // document.getElementById('calcButton')?.click();
+        }
+      } else if (e.key === "Escape") {
+        rateInput.dataset.manual = "";
+        const naturalPerMin = getNaturalPerMinForSelected();
+        rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+        // keep focus on input so user can continue typing if desired
+        rateInput.focus();
+      }
+    });
+  }
+
+  // Read shared params from URL
+  const params = new URLSearchParams(window.location.search);
+  const sharedItem = params.get("item");
+  const sharedRate = params.get("rate");
+  const sharedRail = params.get("rail");
+
+  if (sharedItem && itemSelect) itemSelect.value = sharedItem;
+  if (sharedRate && rateInput) { rateInput.value = sharedRate; rateInput.dataset.manual = "true"; }
+  if (sharedRail && railSelect) railSelect.value = sharedRail;
+  if (sharedItem && sharedRate) runCalculator();
+
+  // Calculate button: run and update URL
+  const calcButton = document.getElementById("calcButton");
+  if (calcButton) calcButton.addEventListener("click", () => {
+    runCalculator();
+    const item = itemSelect.value;
+    const rate = rateInput.value;
+    const rail = railSelect.value;
+    const newParams = new URLSearchParams({ item, rate, rail });
+    history.replaceState(null, "", "?" + newParams.toString());
+  });
+
+  // Clear button: reset manual flag and navigate home
+  const clearBtn = document.getElementById("clearStateBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      if (rateInput) rateInput.dataset.manual = "";
+      const base = window.location.origin;
+      if (base.includes("localhost")) { window.location.href = "http://localhost:8000"; return; }
+      window.location.href = "https://srcraftingcalculations.github.io/sr-crafting-calculator/";
+    });
+  }
+
+  // Share button: copy current URL to clipboard
+  const shareButton = document.getElementById("shareButton");
+  if (shareButton) {
+    shareButton.addEventListener("click", () => {
+      const url = window.location.href;
+      navigator.clipboard.writeText(url).then(() => showToast("Shareable link copied!")).catch(() => {
+        const temp = document.createElement("input");
+        temp.value = url;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand("copy");
+        temp.remove();
+        showToast("Shareable link copied!");
+      });
+    });
+  }
+}
+
+init();
