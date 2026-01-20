@@ -521,14 +521,69 @@ function pointerIsOnNode(ev) {
    Zoom / pan utilities (pointer-based)
    - pan start is guarded by pointerIsOnNode so nodes handle their own pointers
    =============================== */
+// Replace your existing ensureResetButton with this version.
+// It places the reset button *above* the graphArea in the DOM and
+// ensures the graph content is pushed down so panning/zooming cannot
+// visually overlap the button. It also updates padding on resize.
 function ensureResetButton() {
   let btn = document.querySelector('.graphResetButton');
-  if (btn) return btn;
+  const graphArea = document.getElementById('graphArea');
+  if (!graphArea) return null;
+
+  // If button already exists, ensure it's still positioned before graphArea
+  if (btn) {
+    if (btn.nextElementSibling !== graphArea) {
+      btn.remove();
+      btn = null;
+    } else {
+      // already in correct place; ensure padding is correct
+      requestAnimationFrame(() => adjustGraphTopPadding(btn, graphArea));
+      return btn;
+    }
+  }
+
+  // Create button container
   btn = document.createElement('div');
   btn.className = 'graphResetButton';
   btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
-  const tableContainer = document.getElementById('tableContainer') || document.body;
-  tableContainer.appendChild(btn);
+
+  // Keep the button in normal flow above the graphArea so the graph cannot overlap it.
+  // Insert it directly before the graphArea element.
+  graphArea.parentNode.insertBefore(btn, graphArea);
+
+  // Small inline styles to keep it visually separated and accessible.
+  // (These are minimal and safe to override in your CSS if you prefer.)
+  btn.style.display = 'flex';
+  btn.style.justifyContent = 'flex-end';
+  btn.style.gap = '8px';
+  btn.style.padding = '6px 8px';
+  btn.style.boxSizing = 'border-box';
+  btn.style.background = 'transparent';
+  btn.style.zIndex = '10';
+
+  // Adjust the graphArea's top padding so the SVG content is pushed down
+  // and cannot be panned/zoomed under the button.
+  function adjustGraphTopPadding(buttonEl, graphEl) {
+    if (!buttonEl || !graphEl) return;
+    // Measure button height after layout
+    const h = Math.max(0, buttonEl.offsetHeight || 0);
+    // Add a small gap so the button doesn't sit flush on the SVG
+    const gap = 8;
+    graphEl.style.paddingTop = (h + gap) + 'px';
+  }
+
+  // Run once after insertion to set padding
+  requestAnimationFrame(() => adjustGraphTopPadding(btn, graphArea));
+
+  // Keep padding correct on window resize (debounced-ish)
+  let resizeTimer = null;
+  function onResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => adjustGraphTopPadding(btn, graphArea), 80);
+  }
+  window.removeEventListener('resize', onResize);
+  window.addEventListener('resize', onResize);
+
   return btn;
 }
 
