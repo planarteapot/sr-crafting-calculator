@@ -228,32 +228,38 @@ function buildGraphData(chain, rootItem) {
 // Graph rendering block (TESTABLE)
 // ===============================
 /*
-  === TEST GRAPH-RENDER BLOCK START ===
-  This entire section implements three straight-line strategies:
-    - Ports (fixed connection slots on target)
-    - Parallel Offsets (small perpendicular offsets)
-    - Bus (short shared connector)
-  It auto-selects the first strategy that avoids endpoint collisions.
-  You can toggle DEBUG and FORCE_STRATEGY below for testing.
-*/
+  /* ============================
+  REPLACE-ONLY: Graph render + test UI block
+  Drop this into app.js in place of the previous graph rendering code.
+  It exposes a small UI to force strategy and enable debug markers.
+  ============================ */
+
+/* Tunables */
 const GRAPH_COL_WIDTH = 220;
 const GRAPH_ROW_HEIGHT = 120;
 const GRAPH_LABEL_OFFSET = 40;
 const GRAPH_CONTENT_PAD = 64;
 
+/* Strategy params */
 const PORT_COUNT = 4;
 const OFFSET_SPACING = 10;
 const BUS_THRESHOLD = 4;
 const BUS_GAP = 36;
 const BUS_PORT_SPACING = 18;
 
-let DEBUG_GRAPH = false;           // set true to draw debug markers
-let FORCE_STRATEGY = null;         // 'ports' | 'offsets' | 'bus' or null
+/* Runtime toggles (UI will control these) */
+let GRAPH_DEBUG = false;           // draw debug markers when true
+let GRAPH_FORCE_STRATEGY = null;   // 'ports'|'offsets'|'bus' or null for auto
 
+/* Helpers */
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 function isDarkMode() {
   return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
 }
 
+/* 1) Layout: assign x,y by depth and stable ordering */
 function buildInitialLayout(nodes, links) {
   const columns = {};
   for (const node of nodes) {
@@ -274,6 +280,7 @@ function buildInitialLayout(nodes, links) {
   }
 }
 
+/* 2) Incoming map */
 function buildIncomingMap(links) {
   const incoming = {};
   for (const l of links) {
@@ -283,6 +290,7 @@ function buildIncomingMap(links) {
   return incoming;
 }
 
+/* 3) Collision detection (proximity) */
 function detectEndpointCollisions(endpoints, eps = 6) {
   const byTarget = {};
   for (const e of endpoints) {
@@ -301,6 +309,7 @@ function detectEndpointCollisions(endpoints, eps = 6) {
   return false;
 }
 
+/* 4) Node drawing helper (keeps visuals consistent) */
 function drawNodesSVG(nodes) {
   let inner = '';
   for (const node of nodes) {
@@ -327,6 +336,7 @@ function drawNodesSVG(nodes) {
   return inner;
 }
 
+/* 5A) Strategy: Ports */
 function renderWithPorts(nodes, links) {
   const incoming = buildIncomingMap(links);
   const portMap = {};
@@ -354,7 +364,7 @@ function renderWithPorts(nodes, links) {
       const p = portMap[node.id][i];
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${p.x}" y2="${p.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: p.x, y: p.y });
-      if (DEBUG_GRAPH) inner += `<circle cx="${p.x}" cy="${p.y}" r="3" fill="#ff0000" />`;
+      if (GRAPH_DEBUG) inner += `<circle cx="${p.x}" cy="${p.y}" r="3" fill="#ff0000" />`;
     }
   }
 
@@ -362,6 +372,7 @@ function renderWithPorts(nodes, links) {
   return { inner, endpoints };
 }
 
+/* 5B) Strategy: Parallel Offsets */
 function renderWithOffsets(nodes, links) {
   const incoming = buildIncomingMap(links);
   let inner = '';
@@ -381,7 +392,7 @@ function renderWithOffsets(nodes, links) {
       const ty = node.y + offset;
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${ty}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: tx, y: ty });
-      if (DEBUG_GRAPH) inner += `<circle cx="${tx}" cy="${ty}" r="3" fill="#00aaff" />`;
+      if (GRAPH_DEBUG) inner += `<circle cx="${tx}" cy="${ty}" r="3" fill="#00aaff" />`;
     }
   }
 
@@ -389,6 +400,7 @@ function renderWithOffsets(nodes, links) {
   return { inner, endpoints };
 }
 
+/* 5C) Strategy: Bus */
 function renderWithBus(nodes, links) {
   const incoming = buildIncomingMap(links);
   let inner = '';
@@ -416,11 +428,11 @@ function renderWithBus(nodes, links) {
         inner += `<rect x="${px - 4}" y="${py - 4}" width="8" height="8" rx="2" ry="2" fill="#fff" stroke="#333"/>`;
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${px}" y2="${py}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: px, y: py });
-        if (DEBUG_GRAPH) inner += `<circle cx="${px}" cy="${py}" r="2" fill="#22aa22" />`;
+        if (GRAPH_DEBUG) inner += `<circle cx="${px}" cy="${py}" r="2" fill="#22aa22" />`;
       }
       inner += `<line class="edge" x1="${node.x}" y1="${busY}" x2="${node.x}" y2="${node.y - 22}" stroke="#666" stroke-width="2.5" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: node.x, y: node.y - 22 });
-      if (DEBUG_GRAPH) inner += `<circle cx="${node.x}" cy="${busY}" r="3" fill="#aa22aa" />`;
+      if (GRAPH_DEBUG) inner += `<circle cx="${node.x}" cy="${busY}" r="3" fill="#aa22aa" />`;
     } else {
       const tx = node.x - 22 - 6;
       const sortedIns = ins.map(id => nodes.find(n => n.id === id))
@@ -428,7 +440,7 @@ function renderWithBus(nodes, links) {
       for (const s of sortedIns) {
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${node.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: tx, y: node.y });
-        if (DEBUG_GRAPH) inner += `<circle cx="${tx}" cy="${node.y}" r="3" fill="#999999" />`;
+        if (GRAPH_DEBUG) inner += `<circle cx="${tx}" cy="${node.y}" r="3" fill="#999999" />`;
       }
     }
   }
@@ -437,10 +449,11 @@ function renderWithBus(nodes, links) {
   return { inner, endpoints };
 }
 
+/* 6) Try strategies in order (or forced) and return inner SVG */
 function tryStrategiesAndRender(nodes, links) {
   buildInitialLayout(nodes, links);
 
-  const order = FORCE_STRATEGY ? [FORCE_STRATEGY] : ['ports', 'offsets', 'bus'];
+  const order = GRAPH_FORCE_STRATEGY ? [GRAPH_FORCE_STRATEGY] : ['ports', 'offsets', 'bus'];
 
   for (const strat of order) {
     let result;
@@ -449,15 +462,15 @@ function tryStrategiesAndRender(nodes, links) {
     else result = renderWithBus(nodes, links);
 
     if (!detectEndpointCollisions(result.endpoints, 6)) {
-      if (DEBUG_GRAPH) console.log('Selected strategy:', strat);
       return result.inner;
     }
   }
 
-  const fallback = renderWithBus(nodes, links);
-  return fallback.inner;
+  // fallback to bus
+  return renderWithBus(nodes, links).inner;
 }
 
+/* 7) Final renderGraph (returns HTML string for graph area) */
 function renderGraph(nodes, links, rootItem) {
   const inner = tryStrategiesAndRender(nodes, links, rootItem);
 
@@ -494,7 +507,48 @@ function renderGraph(nodes, links, rootItem) {
   `;
   return svg;
 }
-/* === TEST GRAPH-RENDER BLOCK END === */
+
+/* 8) Small UI helpers so you can toggle strategy/debug while testing.
+   These add a tiny control bar above the graph area. */
+function ensureGraphTestControls() {
+  if (document.getElementById('graphTestControls')) return;
+  const container = document.getElementById('tableContainer') || document.body;
+  const div = document.createElement('div');
+  div.id = 'graphTestControls';
+  div.style.margin = '8px 0';
+  div.style.display = 'flex';
+  div.style.gap = '8px';
+  div.style.alignItems = 'center';
+
+  div.innerHTML = `
+    <label style="font-weight:600;">Graph strategy:</label>
+    <select id="graphStrategySelect">
+      <option value="">Auto</option>
+      <option value="ports">Ports</option>
+      <option value="offsets">Offsets</option>
+      <option value="bus">Bus</option>
+    </select>
+    <label style="margin-left:12px;"><input type="checkbox" id="graphDebugToggle"> Debug</label>
+    <button id="graphApplyBtn" style="margin-left:8px;padding:6px 10px;">Apply</button>
+  `;
+  container.insertBefore(div, container.firstChild);
+
+  document.getElementById('graphApplyBtn').addEventListener('click', () => {
+    const sel = document.getElementById('graphStrategySelect').value;
+    GRAPH_FORCE_STRATEGY = sel || null;
+    GRAPH_DEBUG = document.getElementById('graphDebugToggle').checked;
+    // re-run current calculation if present
+    const calcBtn = document.getElementById('calcButton');
+    if (calcBtn) calcBtn.click();
+  });
+}
+
+/* Ensure controls exist (safe to call repeatedly) */
+ensureGraphTestControls();
+
+/* ============================
+  End of replacement block
+  ============================ */
 
 // ===============================
 // Graph zoom/pan & reset (unchanged)
