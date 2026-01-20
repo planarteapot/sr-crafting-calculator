@@ -224,48 +224,53 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
-// ===============================
-// Render graph (numbers centered)
-// ===============================
 /* ============================
-   Graph rendering: try Ports, Offsets, Bus (no curves)
-   Replace your previous renderGraph and small helpers with this block
-   ============================ */
+  Graph rendering (robust, straight-line strategies)
+  Replace previous graph-related code with this block only
+   - Tries Ports -> Offsets -> Bus (no curves)
+   - Uses proximity collision detection
+   - DEBUG toggle and FORCE_STRATEGY for testing
+  ============================ */
 
-// Tunable parameters
+/* Tunables */
 const GRAPH_COL_WIDTH = 220;
 const GRAPH_ROW_HEIGHT = 120;
 const GRAPH_LABEL_OFFSET = 40;
 const GRAPH_CONTENT_PAD = 64;
 
-// Strategy parameters
-const PORT_COUNT = 4;        // number of fixed ports on target left side
-const OFFSET_SPACING = 10;   // px between parallel offset lines
-const BUS_THRESHOLD = 4;     // create bus when incoming >= threshold
-const BUS_GAP = 36;          // px between target and bus
-const BUS_PORT_SPACING = 18; // spacing between ports on bus
+/* Strategy params */
+const PORT_COUNT = 4;         // default number of ports to expose
+const OFFSET_SPACING = 10;    // px between parallel offset lines
+const BUS_THRESHOLD = 4;      // create bus when incoming >= threshold
+const BUS_GAP = 36;           // px between target and bus
+const BUS_PORT_SPACING = 18;  // spacing between ports on bus
 
-// Helper: escape HTML for labels
+/* Debug / testing */
+const DEBUG = false;          // set true to draw debug markers
+const FORCE_STRATEGY = null;  // 'ports' | 'offsets' | 'bus' or null to auto-pick
+
+/* Helpers */
 function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function isDarkMode() {
+  return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
 }
 
-// Build initial layered layout (keeps your existing depth logic)
+/* Layout: assign x,y based on depth and index (stable) */
 function buildInitialLayout(nodes, links) {
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
-
   for (const [depth, colNodes] of Object.entries(columns)) {
+    // stable ordering: by number of consumers then label
     colNodes.sort((a, b) => {
       const aOut = links.filter(l => l.to === a.id).length;
       const bOut = links.filter(l => l.to === b.id).length;
-      return bOut - aOut;
+      if (bOut !== aOut) return bOut - aOut;
+      return (a.label || a.id).localeCompare(b.label || b.id);
     });
     colNodes.forEach((node, i) => {
       node.x = depth * GRAPH_COL_WIDTH + 100;
@@ -274,162 +279,116 @@ function buildInitialLayout(nodes, links) {
   }
 }
 
-// Detect endpoint collisions: returns true if any target has two or more edges with identical endpoint coords
-function detectEndpointCollisions(edgeEndpoints) {
-  // edgeEndpoints: array of { toId, x, y }
-  const map = {};
-  for (const e of edgeEndpoints) {
-    const key = `${e.toId}::${Math.round(e.x)}::${Math.round(e.y)}`;
-    map[key] = (map[key] || 0) + 1;
-    if (map[key] > 1) return true;
-  }
-  return false;
-}
-
-// Strategy A: Ports
-// Returns { inner: string, endpoints: [{toId,x,y}, ...] }
-function renderWithPorts(nodes, links) {
-  // Build incoming map
+/* Build incoming map quickly */
+function buildIncomingMap(links) {
   const incoming = {};
   for (const l of links) {
     incoming[l.to] = incoming[l.to] || [];
     incoming[l.to].push(l.from);
   }
+  return incoming;
+}
 
-  // Precompute ports for each target
-  const portMap = {}; // targetId -> array of {x,y}
+/* Proximity collision detection: returns true if any two endpoints for same target are within `eps` px */
+function detectEndpointCollisions(endpoints, eps = 6) {
+  // endpoints: [{toId,x,y}, ...]
+  const byTarget = {};
+  for (const e of endpoints) {
+    byTarget[e.toId] = byTarget[e.toId] || [];
+    byTarget[e.toId].push(e);
+  }
+  for (const arr of Object.values(byTarget)) {
+    for (let i = 0; i < arr.length; i++) {
+      for (let j = i + 1; j < arr.length; j++) {
+        const dx = arr[i].x - arr[j].x;
+        const dy = arr[i].y - arr[j].y;
+        if ((dx * dx + dy * dy) <= (eps * eps)) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* Strategy A: Ports */
+function renderWithPorts(nodes, links) {
+  const incoming = buildIncomingMap(links);
+  const portMap = {}; // targetId -> [{x,y},...]
+
+  // compute ports for each node (centered vertically)
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
     const count = Math.max(PORT_COUNT, ins.length);
-    const startY = node.y - ((count - 1) * OFFSET_SPACING) / 2;
+    const totalHeight = (count - 1) * OFFSET_SPACING;
+    const startY = node.y - totalHeight / 2;
     const px = node.x - 22 - 6; // left of circle (circle radius ~22)
     const ports = [];
-    for (let i = 0; i < count; i++) {
-      ports.push({ x: px, y: startY + i * OFFSET_SPACING });
-    }
+    for (let i = 0; i < count; i++) ports.push({ x: px, y: startY + i * OFFSET_SPACING });
     portMap[node.id] = ports;
   }
 
-  // Build inner SVG: edges to assigned ports, nodes
   let inner = '';
   const endpoints = [];
 
-  // Draw edges: assign ports deterministically by source x then y
+  // draw edges: assign ports deterministically by source x then y
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
-    if (ins.length === 0) continue;
-    const sortedIns = ins.slice().map(id => nodes.find(n => n.id === id))
-                          .sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (!ins.length) continue;
+    const sortedIns = ins.map(id => nodes.find(n => n.id === id))
+                         .sort((a, b) => (a.x - b.x) || (a.y - b.y));
     for (let i = 0; i < sortedIns.length; i++) {
       const s = sortedIns[i];
       const p = portMap[node.id][i]; // deterministic mapping
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${p.x}" y2="${p.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: p.x, y: p.y });
+      if (DEBUG) inner += `<circle cx="${p.x}" cy="${p.y}" r="3" fill="#ff0000" />`;
     }
   }
 
-  // Draw nodes (labels, circles, numbers)
-  for (const node of nodes) {
-    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
-    const strokeColor = "#2c3e50";
-    const textColor = getTextColor(fillColor);
-    const labelY = node.y - GRAPH_LABEL_OFFSET;
-
-    inner += `
-      <g>
-        <text class="nodeLabel" x="${node.x}" y="${labelY}"
-              text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${escapeHtml(node.label)}
-        </text>
-        <circle cx="${node.x}" cy="${node.y}" r="22" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
-        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" />`}
-        <text class="nodeNumber" x="${node.x}" y="${node.y}" text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${node.raw ? "" : Math.ceil(node.machines)}
-        </text>
-      </g>
-    `;
-  }
+  // draw nodes
+  inner += drawNodesSVG(nodes);
 
   return { inner, endpoints };
 }
 
-// Strategy B: Parallel Offsets
+/* Strategy B: Parallel Offsets */
 function renderWithOffsets(nodes, links) {
-  // Build incoming map
-  const incoming = {};
-  for (const l of links) {
-    incoming[l.to] = incoming[l.to] || [];
-    incoming[l.to].push(l.from);
-  }
-
+  const incoming = buildIncomingMap(links);
   let inner = '';
   const endpoints = [];
 
-  // For each target, compute offsets centered around target.y
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
-    if (ins.length === 0) continue;
-    const sortedIns = ins.slice().map(id => nodes.find(n => n.id === id))
-                          .sort((a, b) => (a.x - b.x) || (a.y - b.y));
+    if (!ins.length) continue;
+    const sortedIns = ins.map(id => nodes.find(n => n.id === id))
+                         .sort((a, b) => (a.x - b.x) || (a.y - b.y));
     const k = sortedIns.length;
     const mid = (k - 1) / 2;
+    const tx = node.x - 22 - 6;
     for (let i = 0; i < sortedIns.length; i++) {
       const s = sortedIns[i];
       const offset = (i - mid) * OFFSET_SPACING;
-      const tx = node.x - 22 - 6;
       const ty = node.y + offset;
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${ty}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: tx, y: ty });
+      if (DEBUG) inner += `<circle cx="${tx}" cy="${ty}" r="3" fill="#00aaff" />`;
     }
   }
 
-  // Draw nodes
-  for (const node of nodes) {
-    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
-    const strokeColor = "#2c3e50";
-    const textColor = getTextColor(fillColor);
-    const labelY = node.y - GRAPH_LABEL_OFFSET;
-
-    inner += `
-      <g>
-        <text class="nodeLabel" x="${node.x}" y="${labelY}"
-              text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${escapeHtml(node.label)}
-        </text>
-        <circle cx="${node.x}" cy="${node.y}" r="22" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
-        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" />`}
-        <text class="nodeNumber" x="${node.x}" y="${node.y}" text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${node.raw ? "" : Math.ceil(node.machines)}
-        </text>
-      </g>
-    `;
-  }
-
+  inner += drawNodesSVG(nodes);
   return { inner, endpoints };
 }
 
-// Strategy C: Bus
+/* Strategy C: Bus */
 function renderWithBus(nodes, links) {
-  // Build incoming map
-  const incoming = {};
-  for (const l of links) {
-    incoming[l.to] = incoming[l.to] || [];
-    incoming[l.to].push(l.from);
-  }
-
+  const incoming = buildIncomingMap(links);
   let inner = '';
   const endpoints = [];
 
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
-    if (ins.length === 0) continue;
+    if (!ins.length) continue;
 
     if (ins.length >= BUS_THRESHOLD) {
-      // create bus above target
       const busY = node.y - BUS_GAP;
       const k = ins.length;
       const busLength = Math.max(80, (k - 1) * BUS_PORT_SPACING + 20);
@@ -437,10 +396,9 @@ function renderWithBus(nodes, links) {
       const busX2 = node.x + busLength / 2;
       inner += `<line class="bus" x1="${busX1}" y1="${busY}" x2="${busX2}" y2="${busY}" stroke="#444" stroke-width="3" stroke-linecap="round"/>`;
 
-      // ports along bus
+      const sortedIns = ins.map(id => nodes.find(n => n.id === id))
+                           .sort((a, b) => (a.x - b.x) || (a.y - b.y));
       const startX = busX1 + 10;
-      const sortedIns = ins.slice().map(id => nodes.find(n => n.id === id))
-                            .sort((a, b) => (a.x - b.x) || (a.y - b.y));
       for (let i = 0; i < sortedIns.length; i++) {
         const s = sortedIns[i];
         const px = startX + i * BUS_PORT_SPACING;
@@ -448,30 +406,37 @@ function renderWithBus(nodes, links) {
         inner += `<rect x="${px - 4}" y="${py - 4}" width="8" height="8" rx="2" ry="2" fill="#fff" stroke="#333"/>`;
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${px}" y2="${py}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: px, y: py });
+        if (DEBUG) inner += `<circle cx="${px}" cy="${py}" r="2" fill="#22aa22" />`;
       }
-
-      // connect bus center to target with single straight line
+      // bus -> target single line
       inner += `<line class="edge" x1="${node.x}" y1="${busY}" x2="${node.x}" y2="${node.y - 22}" stroke="#666" stroke-width="2.5" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: node.x, y: node.y - 22 });
+      if (DEBUG) inner += `<circle cx="${node.x}" cy="${busY}" r="3" fill="#aa22aa" />`;
     } else {
-      // fallback: direct lines to left side center
+      // direct lines to left center
       const tx = node.x - 22 - 6;
-      const sortedIns = ins.slice().map(id => nodes.find(n => n.id === id))
-                            .sort((a, b) => (a.x - b.x) || (a.y - b.y));
+      const sortedIns = ins.map(id => nodes.find(n => n.id === id))
+                           .sort((a, b) => (a.x - b.x) || (a.y - b.y));
       for (const s of sortedIns) {
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${node.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: tx, y: node.y });
+        if (DEBUG) inner += `<circle cx="${tx}" cy="${node.y}" r="3" fill="#999999" />`;
       }
     }
   }
 
-  // Draw nodes
+  inner += drawNodesSVG(nodes);
+  return { inner, endpoints };
+}
+
+/* Draw nodes helper (keeps consistent visuals) */
+function drawNodesSVG(nodes) {
+  let inner = '';
   for (const node of nodes) {
-    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
+    const fillColor = node.raw ? "#f4d03f" : (MACHINE_COLORS[node.building] || "#95a5a6");
     const strokeColor = "#2c3e50";
     const textColor = getTextColor(fillColor);
     const labelY = node.y - GRAPH_LABEL_OFFSET;
-
     inner += `
       <g>
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
@@ -488,44 +453,41 @@ function renderWithBus(nodes, links) {
       </g>
     `;
   }
-
-  return { inner, endpoints };
+  return inner;
 }
 
-// Utility: detect dark mode (your app uses body.dark earlier)
-function isDarkMode() {
-  return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
-}
-
-// Try strategies in order and pick the first that removes endpoint collisions
-function tryStrategiesAndRender(nodes, links, rootItem) {
-  // initial layout
+/* Try strategies in order (or forced) and return inner SVG content */
+function tryStrategiesAndRender(nodes, links) {
   buildInitialLayout(nodes, links);
 
-  // Strategy A: Ports
-  const portsResult = renderWithPorts(nodes, links);
-  if (!detectEndpointCollisions(portsResult.endpoints)) {
-    return portsResult.inner;
+  // Strategy order or forced
+  const order = FORCE_STRATEGY ? [FORCE_STRATEGY] : ['ports', 'offsets', 'bus'];
+
+  for (const strat of order) {
+    let result;
+    if (strat === 'ports') result = renderWithPorts(nodes, links);
+    else if (strat === 'offsets') result = renderWithOffsets(nodes, links);
+    else result = renderWithBus(nodes, links);
+
+    // collision test: use small epsilon so near endpoints count as collision
+    if (!detectEndpointCollisions(result.endpoints, 6)) {
+      if (DEBUG) console.log('Selected strategy:', strat);
+      return result.inner;
+    }
+    // otherwise continue to next strategy
   }
 
-  // Strategy B: Parallel Offsets
-  const offsetsResult = renderWithOffsets(nodes, links);
-  if (!detectEndpointCollisions(offsetsResult.endpoints)) {
-    return offsetsResult.inner;
-  }
-
-  // Strategy C: Bus (fallback)
-  const busResult = renderWithBus(nodes, links);
-  // bus should eliminate collisions by design; still check
-  return busResult.inner;
+  // fallback: return bus rendering (should resolve collisions)
+  const fallback = renderWithBus(nodes, links);
+  return fallback.inner;
 }
 
-// Final renderGraph function (keeps viewBox padding)
+/* Final renderGraph (keeps viewBox padding and returns HTML string) */
 function renderGraph(nodes, links, rootItem) {
-  // nodes and links are expected to already be built by buildGraphData
+  // nodes and links expected from buildGraphData
   const inner = tryStrategiesAndRender(nodes, links, rootItem);
 
-  // compute content bbox from node positions (they were set by buildInitialLayout)
+  // compute content bbox from node positions
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
@@ -557,12 +519,11 @@ function renderGraph(nodes, links, rootItem) {
       </div>
     </div>
   `;
-
   return svg;
 }
 
 /* ============================
-   End of graph rendering block
+  End of replacement block
    ============================ */
 
 // small helper to avoid injecting raw HTML from labels
