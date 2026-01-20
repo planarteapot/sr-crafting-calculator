@@ -334,12 +334,18 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (anchors guaranteed; helper dots reintroduced)
+   renderGraph (updated)
+   - Smelters: no left anchor
+   - BBM: no left anchor, right anchor shown
+   - Raw->level0/BBM/Smelter lines drawn center->center (node-to-node)
+   - Anchors spaced further from nodes via ANCHOR_OFFSET
+   - Columns sorted alphabetically top->bottom
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
-  const anchorRadius = 5;
-  const anchorHitRadius = 12;
+  const ANCHOR_RADIUS = 5;
+  const ANCHOR_HIT_RADIUS = 12;
+  const ANCHOR_OFFSET = 18; // increased spacing from node edge (was ~10)
   const isDark = isDarkMode();
 
   const BBM_ID = 'Basic Building Material';
@@ -351,7 +357,7 @@ function renderGraph(nodes, links, rootItem) {
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
   }
 
-  // If canonical smelter outputs exist, align BBM with their column
+  // Align BBM with canonical smelter outputs if present
   const targetNodes = nodes.filter(n => TARGET_SMELTER_OUTPUTS.includes(n.id));
   if (targetNodes.length > 0) {
     const depthCounts = {};
@@ -418,18 +424,21 @@ function renderGraph(nodes, links, rootItem) {
   // Determine leftmost depth (minDepth)
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
 
-  // --- Edges: draw direct node-to-node wires only for far-left raw sources to Smelters OR to BBM ---
+  // --- Edges: draw only raw->Smelter or raw->BBM lines, node-to-node (center->center) ---
   for (const link of links) {
+    // links are consumer -> input (consumer consumes input)
     const rawSource = nodes.find(n => n.id === link.to);
     const consumer = nodes.find(n => n.id === link.from);
     if (!rawSource || !consumer) continue;
 
     const consumerIsBBM = (consumer.id === BBM_ID || consumer.label === BBM_ID);
 
+    // Only draw when source is raw, on leftmost column, and consumer is Smelter OR BBM
     if (rawSource.raw && rawSource.depth === minDepth && (consumer.building === 'Smelter' || consumerIsBBM)) {
+      // Node-to-node: start at raw center, end at consumer center
       const startX = rawSource.x;
       const startY = rawSource.y;
-      const endX = consumer.hasInputAnchor ? (consumer.x - nodeRadius - 10) : consumer.x;
+      const endX = consumer.x; // center of consumer (node-to-node)
       const endY = consumer.y;
 
       inner += `
@@ -441,7 +450,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Nodes + anchors (helper dots reintroduced)
+  // Nodes + anchors (helper dots)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
@@ -451,10 +460,15 @@ function renderGraph(nodes, links, rootItem) {
     // Hide helper dots for leftmost raw nodes only
     const hideAllAnchors = (node.raw && node.depth === minDepth);
 
-    // BBM special rule: hide left anchor, always show right anchor
+    // Smelters: hide left anchor explicitly
+    const isSmelter = (node.building === 'Smelter');
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
-    const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isBBM;
-    const showRightAnchor = !hideAllAnchors && node.hasOutputAnchor;
+
+    // Left anchor: only show if node.hasInputAnchor && not leftmost raw && not smelter && not BBM
+    const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM;
+
+    // Right anchor: show for nodes that haveOutputAnchor (or BBM always shows right)
+    const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM);
 
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
@@ -478,24 +492,24 @@ function renderGraph(nodes, links, rootItem) {
 
     // Left input anchor (render when allowed)
     if (showLeftAnchor) {
-      const ax = node.x - nodeRadius - 10;
+      const ax = node.x - nodeRadius - ANCHOR_OFFSET;
       const ay = node.y;
       inner += `
         <g class="anchor anchor-left" data-node="${escapeHtml(node.id)}" data-side="left" transform="translate(${ax},${ay})" tabindex="0" role="button" aria-label="Input anchor for ${escapeHtml(node.label)}">
-          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
-          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+          <circle class="anchor-hit" cx="0" cy="0" r="${ANCHOR_HIT_RADIUS}" fill="transparent" pointer-events="all" />
+          <circle class="anchor-dot" cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
         </g>
       `;
     }
 
-    // Right output anchor (render when allowed; BBM's right anchor remains visible)
-    if (showRightAnchor || isBBM) {
-      const bx = node.x + nodeRadius + 10;
+    // Right output anchor (render when allowed)
+    if (showRightAnchor) {
+      const bx = node.x + nodeRadius + ANCHOR_OFFSET;
       const by = node.y;
       inner += `
         <g class="anchor anchor-right" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${bx},${by})" tabindex="0" role="button" aria-label="Output anchor for ${escapeHtml(node.label)}">
-          <circle class="anchor-hit" cx="0" cy="0" r="${anchorHitRadius}" fill="transparent" pointer-events="all" />
-          <circle class="anchor-dot" cx="0" cy="0" r="${anchorRadius}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+          <circle class="anchor-hit" cx="0" cy="0" r="${ANCHOR_HIT_RADIUS}" fill="transparent" pointer-events="all" />
+          <circle class="anchor-dot" cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
         </g>
       `;
     }
