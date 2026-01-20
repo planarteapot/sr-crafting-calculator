@@ -1,51 +1,24 @@
 // ===============================
-// Load Recipes
+// app.js - Full updated script (final fixes)
+// - Clicking anywhere in a node highlights only its immediate inputs
+// - Clicking the same node again clears pulses (toggle off)
+// - Prevents the black focus box by inline styles and pointer-events on children
+// - Drag threshold prevents accidental activation while panning
+// - Left->right layout retained
 // ===============================
-async function loadRecipes() {
-  const url = "https://srcraftingcalculations.github.io/sr-crafting-calculator/data/recipes.json";
 
-  try {
-    const response = await fetch(url, { cache: "no-store" });
-    if (!response.ok) throw new Error("Failed to fetch recipes.json");
-    return await response.json();
-  } catch (err) {
-    console.error("Error loading recipes:", err);
-    document.getElementById("outputArea").innerHTML =
-      `<p style="color:red;">Error loading recipe data. Please try again later.</p>`;
-    return {};
-  }
-}
-
-let RECIPES = {};
-let TIERS = {};
-
-function getTextColor(bg) {
-  const r = parseInt(bg.substr(1, 2), 16);
-  const g = parseInt(bg.substr(3, 2), 16);
-  const b = parseInt(bg.substr(5, 2), 16);
-  const luminance = (0.299*r + 0.587*g + 0.114*b);
-  return luminance > 150 ? "#000000" : "#ffffff";
-}
-
+/* ===============================
+   Configuration & Constants
+   =============================== */
 const MACHINE_COLORS = {
-  "Smelter":      "#e67e22", // vivid orange
-  "Furnace":      "#d63031", // bright red (distinct from Smelter)
-  "Fabricator":   "#0984e3", // strong blue (more saturated than before)
-  "Mega Press":   "#6c5ce7", // bright violet (separated from Pyro Forge)
-  "Assembler":    "#00b894", // emerald green (clean, readable)
-  "Refinery":     "#e84393", // hot pink (far from Furnace/Smelter)
-  "Compounder":   "#00cec9", // aqua cyan (distinct from Fabricator blue)
-  "Pyro Forge":   "#a55eea"  // lavender purple (lighter than Mega Press)
-};
-
-const MACHINE_SPEED = {
-  "Smelter": 1.0,
-  "Fabricator": 1.0,
-  "Assembler": 1.0,
-  "Furnace": 1.0,
-  "Mega Press": 1.0,
-  "Refinery": 1.0,
-  "Pyro Forge": 1.0
+  "Smelter":      "#e67e22",
+  "Furnace":      "#d63031",
+  "Fabricator":   "#0984e3",
+  "Mega Press":   "#6c5ce7",
+  "Assembler":    "#00b894",
+  "Refinery":     "#e84393",
+  "Compounder":   "#00cec9",
+  "Pyro Forge":   "#a55eea"
 };
 
 const SPECIAL_EXTRACTORS = {
@@ -54,82 +27,97 @@ const SPECIAL_EXTRACTORS = {
   "Sulphur Ore": 240
 };
 
-// ===============================
-// Helpers
-// ===============================
+const GRAPH_COL_WIDTH = 220;
+const GRAPH_ROW_HEIGHT = 120;
+const GRAPH_LABEL_OFFSET = 40;
+const GRAPH_CONTENT_PAD = 64;
+
+const DRAG_THRESHOLD_PX = 8;      // desktop threshold
+const TOUCH_THRESHOLD_PX = 12;    // touch threshold
+const PULSE_PROPAGATION_DEPTH = 1; // immediate inputs only
+const PULSE_STAGGER_MS = 90;      // kept for timing if needed
+
+/* ===============================
+   Utilities
+   =============================== */
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function getTextColor(bg) {
+  if (!bg || bg[0] !== "#") return "#000000";
+  const r = parseInt(bg.substr(1, 2), 16);
+  const g = parseInt(bg.substr(3, 2), 16);
+  const b = parseInt(bg.substr(5, 2), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+  return luminance > 150 ? "#000000" : "#ffffff";
+}
+function isDarkMode() {
+  return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
+}
+function showToast(message) {
+  const container = document.getElementById("toastContainer");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  container.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("show"));
+  setTimeout(() => {
+    toast.classList.remove("show");
+    setTimeout(() => toast.remove(), 300);
+  }, 2500);
+}
+
+/* ===============================
+   Data loading & recipe helpers
+   =============================== */
+let RECIPES = {};
+let TIERS = {};
+
+async function loadRecipes() {
+  const url = "https://srcraftingcalculations.github.io/sr-crafting-calculator/data/recipes.json";
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) throw new Error("Failed to fetch recipes.json");
+    return await response.json();
+  } catch (err) {
+    console.error("Error loading recipes:", err);
+    const out = document.getElementById("outputArea");
+    if (out) out.innerHTML = `<p style="color:red;">Error loading recipe data. Please try again later.</p>`;
+    return {};
+  }
+}
+
 function getRecipe(name) {
   return RECIPES[name] || null;
 }
 
-function computeRailsNeeded(inputRates, railSpeed) {
-  const total = Object.values(inputRates).reduce((sum, val) => sum + val, 0);
-  return Math.ceil(total / railSpeed);
-}
-
-// ===============================
-// Toast Notification System
-// ===============================
-function showToast(message) {
-  const container = document.getElementById("toastContainer");
-  if (!container) return;
-
-  const toast = document.createElement("div");
-  toast.className = "toast";
-  toast.textContent = message;
-
-  container.appendChild(toast);
-
-  requestAnimationFrame(() => {
-    toast.classList.add("show");
-  });
-
-  setTimeout(() => {
-    toast.classList.remove("show");
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-// ===============================
-// Chain Expansion
-// ===============================
+/* ===============================
+   Expand production chain
+   =============================== */
 function expandChain(item, targetRate) {
   const chain = {};
   const machineTotals = {};
   const extractorTotals = {};
-
   const pending = {};
   const processed = {};
   const queue = [];
 
   function trackExtractor(name, rate) {
-    if (!extractorTotals[name]) extractorTotals[name] = 0;
-    extractorTotals[name] += rate;
+    extractorTotals[name] = (extractorTotals[name] || 0) + rate;
   }
 
   function enqueue(name, rate) {
     const recipe = getRecipe(name);
-
-    // If it's RAW (no recipe), count it immediately every time
     if (!recipe) {
       trackExtractor(name, rate);
-
-      // Add RAW node to chain if not already present
       if (!chain[name]) {
-        chain[name] = {
-          rate,
-          raw: true,
-          building: "RAW",
-          machines: 0,
-          inputs: {}
-        };
+        chain[name] = { rate, raw: true, building: "RAW", machines: 0, inputs: {} };
       } else {
         chain[name].rate += rate;
       }
-
       return;
     }
-
-    // For crafted items, accumulate and queue as before
     pending[name] = (pending[name] || 0) + rate;
     if (!processed[name]) queue.push(name);
   }
@@ -144,8 +132,11 @@ function expandChain(item, targetRate) {
 
     const rate = pending[current];
     const recipe = getRecipe(current);
+    if (!recipe) {
+      trackExtractor(current, rate);
+      continue;
+    }
 
-    // At this point, recipe is guaranteed to exist (RAW handled in enqueue)
     const craftsPerMin = rate / recipe.output;
     const outputPerMinPerMachine = (recipe.output * 60) / recipe.time;
     const machines = Math.ceil(rate / outputPerMinPerMachine);
@@ -158,8 +149,7 @@ function expandChain(item, targetRate) {
       inputs: {}
     };
 
-    machineTotals[recipe.building] =
-      (machineTotals[recipe.building] || 0) + machines;
+    machineTotals[recipe.building] = (machineTotals[recipe.building] || 0) + machines;
 
     for (const [input, qty] of Object.entries(recipe.inputs)) {
       const inputRate = craftsPerMin * qty;
@@ -171,11 +161,13 @@ function expandChain(item, targetRate) {
   return { chain, machineTotals, extractorTotals };
 }
 
+/* ===============================
+   Depth computation & graph data
+   =============================== */
 function computeDepths(chain, rootItem) {
   const consumers = {};
   const depths = {};
 
-  // Build reverse edges: input → list of items that consume it
   for (const [item, data] of Object.entries(chain)) {
     for (const input of Object.keys(data.inputs || {})) {
       if (!consumers[input]) consumers[input] = [];
@@ -183,23 +175,16 @@ function computeDepths(chain, rootItem) {
     }
   }
 
-  // Start by putting the root far right
   depths[rootItem] = 999;
 
   let changed = true;
   while (changed) {
     changed = false;
-
     for (const item of Object.keys(chain)) {
       const cons = consumers[item];
       if (!cons || cons.length === 0) continue;
-
-      const minConsumerDepth = Math.min(
-        ...cons.map(c => depths[c] ?? 999)
-      );
-
+      const minConsumerDepth = Math.min(...cons.map(c => depths[c] ?? 999));
       const newDepth = minConsumerDepth - 1;
-
       if (depths[item] !== newDepth) {
         depths[item] = newDepth;
         changed = true;
@@ -207,17 +192,13 @@ function computeDepths(chain, rootItem) {
     }
   }
 
-  // Second pass: strictly enforce "inputs are left of outputs"
   let adjusted = true;
   while (adjusted) {
     adjusted = false;
-
     for (const [item, data] of Object.entries(chain)) {
       const itemDepth = depths[item] ?? 0;
-
       for (const input of Object.keys(data.inputs || {})) {
         const inputDepth = depths[input] ?? 0;
-
         if (inputDepth >= itemDepth) {
           depths[input] = itemDepth - 1;
           adjusted = true;
@@ -226,12 +207,8 @@ function computeDepths(chain, rootItem) {
     }
   }
 
-  // Normalize so smallest depth becomes 0
   const minDepth = Math.min(...Object.values(depths));
-  for (const item of Object.keys(depths)) {
-    depths[item] -= minDepth;
-  }
-
+  for (const item of Object.keys(depths)) depths[item] -= minDepth;
   return depths;
 }
 
@@ -243,7 +220,6 @@ function buildGraphData(chain, rootItem) {
 
   for (const [item, data] of Object.entries(chain)) {
     const depth = depths[item] ?? 0;
-
     const node = {
       id: item,
       label: item,
@@ -253,32 +229,577 @@ function buildGraphData(chain, rootItem) {
       machines: data.machines,
       inputs: data.inputs
     };
-
     nodes.push(node);
     nodeMap.set(item, node);
   }
 
   for (const [item, data] of Object.entries(chain)) {
     for (const input of Object.keys(data.inputs || {})) {
-      if (nodeMap.has(input)) {
-        links.push({ from: item, to: input });
-      }
+      if (nodeMap.has(input)) links.push({ from: item, to: input });
     }
   }
 
   return { nodes, links };
 }
 
+/* ===============================
+   Inject minimal pulse CSS via JS (optional)
+   - keeps animations available; you can remove if you prefer no CSS
+   =============================== */
+(function injectPulseStylesIfMissing() {
+  if (document.getElementById('graphPulseStyles')) return;
+  const style = document.createElement('style');
+  style.id = 'graphPulseStyles';
+  style.textContent = `
+    @keyframes nodePulse {
+      0% { stroke-width: 2; filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+      50% { stroke-width: 6; filter: drop-shadow(0 0 10px rgba(255,200,50,0.9)); }
+      100% { stroke-width: 2; filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
+    }
+    @keyframes edgePulse {
+      0% { stroke-opacity: 0.6; stroke-width: 2; }
+      50% { stroke-opacity: 1; stroke-width: 4; }
+      100% { stroke-opacity: 0.6; stroke-width: 2; }
+    }
+    circle.pulse-origin { animation: nodePulse 900ms ease-in-out infinite; stroke: #ffd27a !important; }
+    circle.pulse-node { animation: nodePulse 900ms ease-in-out infinite; stroke: #ffcc66 !important; }
+    line.pulse-edge { animation: edgePulse 900ms ease-in-out infinite; stroke: #ffcc66 !important; }
+    @media (prefers-reduced-motion: reduce) {
+      circle.pulse-origin, circle.pulse-node { animation: none !important; stroke-width: 4 !important; stroke: #ffd27a !important; }
+      line.pulse-edge { animation: none !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
+    }
+  `;
+  document.head.appendChild(style);
+})();
 
-// ===============================
-// Table Rendering
-// ===============================
+/* ===============================
+   Render graph (left->right layout)
+   - group (<g class="graph-node">) includes inline style to suppress focus box
+   - child label/rect/number set pointer-events="none" so group receives pointer events
+   =============================== */
+function renderGraph(nodes, links, rootItem) {
+  const nodeRadius = 22;
+  const isDark = isDarkMode();
+
+  // Group nodes by depth
+  const columns = {};
+  for (const node of nodes) {
+    if (!columns[node.depth]) columns[node.depth] = [];
+    columns[node.depth].push(node);
+  }
+
+  // Layout nodes (left -> right: depth -> x, index -> y)
+  for (const [depth, colNodes] of Object.entries(columns)) {
+    colNodes.sort((a, b) => {
+      const aOut = links.filter(l => l.to === a.id).length;
+      const bOut = links.filter(l => l.to === b.id).length;
+      if (bOut !== aOut) return bOut - aOut;
+      return (a.label || a.id).localeCompare(b.label || b.id);
+    });
+    colNodes.forEach((node, i) => {
+      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;   // horizontal spacing per depth (columns)
+      node.y = i * GRAPH_ROW_HEIGHT + 100;              // vertical spacing per index (rows)
+    });
+  }
+
+  const xs = nodes.map(n => n.x);
+  const ys = nodes.map(n => n.y);
+  const minX = nodes.length ? Math.min(...xs) : 0;
+  const maxX = nodes.length ? Math.max(...xs) : 0;
+  const minY = nodes.length ? Math.min(...ys) : 0;
+  const maxY = nodes.length ? Math.max(...ys) : 0;
+
+  const contentX = minX - nodeRadius - GRAPH_CONTENT_PAD;
+  const contentY = minY - nodeRadius - GRAPH_CONTENT_PAD;
+  const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
+  const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
+
+  // Build inner SVG
+  let inner = '';
+
+  // Edges
+  for (const link of links) {
+    const from = nodes.find(n => n.id === link.from);
+    const to = nodes.find(n => n.id === link.to);
+    if (!from || !to) continue;
+
+    inner += `
+      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
+            x1="${from.x}" y1="${from.y}"
+            x2="${to.x}" y2="${to.y}"
+            stroke="#999" stroke-width="2" stroke-linecap="round" />
+    `;
+  }
+
+  // Nodes
+  for (const node of nodes) {
+    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
+    const strokeColor = "#2c3e50";
+    const textColor = getTextColor(fillColor);
+    const labelY = node.y - GRAPH_LABEL_OFFSET;
+
+    // NOTE: inline style "outline:none" prevents the browser focus box around the group.
+    // Child elements have pointer-events="none" so the group receives pointer events reliably.
+    inner += `
+      <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
+        <text class="nodeLabel" x="${node.x}" y="${labelY}"
+              text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
+          ${escapeHtml(node.label)}
+        </text>
+
+        <circle class="graph-node-circle" data-id="${escapeHtml(node.id)}" cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
+                fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
+
+        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" pointer-events="none" />`}
+
+        <text class="nodeNumber" x="${node.x}" y="${node.y}"
+              text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}"
+              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
+              pointer-events="none">
+          ${node.raw ? "" : Math.ceil(node.machines)}
+        </text>
+      </g>
+    `;
+  }
+
+  const viewBoxX = Math.floor(contentX);
+  const viewBoxY = Math.floor(contentY);
+  const viewBoxW = Math.ceil(contentW);
+  const viewBoxH = Math.ceil(contentH);
+
+  const svg = `
+    <div class="graphWrapper" data-vb="${viewBoxX},${viewBoxY},${viewBoxW},${viewBoxH}">
+      <div class="graphViewport">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             class="graphSVG"
+             viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}"
+             preserveAspectRatio="xMidYMid meet">
+          <g id="zoomLayer">
+            ${inner}
+          </g>
+        </svg>
+      </div>
+    </div>
+  `;
+  return svg;
+}
+
+/* ===============================
+   Highlighting (strict immediate-only, toggle)
+   - Only circle and line elements receive pulse classes
+   - Clicking the same node toggles pulses off
+   =============================== */
+function clearPulses(svg) {
+  if (!svg) return;
+  svg.querySelectorAll('circle.pulse-origin, circle.pulse-node, line.pulse-edge').forEach(el => {
+    el.classList.remove('pulse-origin', 'pulse-node', 'pulse-edge');
+  });
+}
+
+function highlightOutgoing(nodeId, svg) {
+  if (!svg || !nodeId) return;
+
+  // If origin circle already has pulse-origin, toggle off
+  const originCircle = svg.querySelector(`circle.graph-node-circle[data-id="${CSS.escape(nodeId)}"]`);
+  if (originCircle && originCircle.classList.contains('pulse-origin')) {
+    clearPulses(svg);
+    return;
+  }
+
+  // Clear previous pulses (only circles/lines)
+  clearPulses(svg);
+
+  // Mark origin circle only
+  if (originCircle) originCircle.classList.add('pulse-origin');
+
+  // Find outgoing edges (consumer -> its inputs)
+  const outgoing = Array.from(svg.querySelectorAll(`line.graph-edge[data-from="${CSS.escape(nodeId)}"]`));
+
+  // Immediate inputs only
+  outgoing.forEach(edgeEl => {
+    edgeEl.classList.add('pulse-edge');
+    const toId = edgeEl.getAttribute('data-to');
+    const targetCircle = svg.querySelector(`circle.graph-node-circle[data-id="${CSS.escape(toId)}"]`);
+    if (targetCircle) targetCircle.classList.add('pulse-node');
+  });
+}
+
+/* ===============================
+   Pointer handling (centralized on wrapper)
+   - Single pointer handlers on wrapper detect clicks on any child element
+   - Uses pointerId map to track drag vs click per pointer
+   =============================== */
+function attachNodePointerHandlers(wrapper) {
+  if (!wrapper) return;
+  const svg = wrapper.querySelector('svg.graphSVG');
+  if (!svg) return;
+
+  // Map pointerId -> { nodeId, startX, startY, isDragging }
+  const pointerMap = new Map();
+
+  function getThreshold(ev) {
+    return (ev && ev.pointerType === 'touch') ? TOUCH_THRESHOLD_PX : DRAG_THRESHOLD_PX;
+  }
+
+  // pointerdown on wrapper (capture early)
+  wrapper.addEventListener('pointerdown', (ev) => {
+    // find nearest graph-node ancestor of the event target
+    const nodeGroup = ev.target.closest && ev.target.closest('g.graph-node[data-id]');
+    if (!nodeGroup) return; // not a node, ignore
+    // stop propagation so global pan doesn't start
+    ev.stopPropagation();
+    try { nodeGroup.setPointerCapture?.(ev.pointerId); } catch (e) {}
+    const nodeId = nodeGroup.getAttribute('data-id');
+    pointerMap.set(ev.pointerId, { nodeId, startX: ev.clientX, startY: ev.clientY, isDragging: false });
+  }, { passive: false });
+
+  // pointermove on window to track dragging
+  window.addEventListener('pointermove', (ev) => {
+    const entry = pointerMap.get(ev.pointerId);
+    if (!entry) return;
+    if (entry.isDragging) return;
+    const dx = ev.clientX - entry.startX;
+    const dy = ev.clientY - entry.startY;
+    if (Math.hypot(dx, dy) > getThreshold(ev)) {
+      entry.isDragging = true;
+      pointerMap.set(ev.pointerId, entry);
+    }
+  }, { passive: true });
+
+  // pointerup on wrapper to finalize click vs drag
+  wrapper.addEventListener('pointerup', (ev) => {
+    const entry = pointerMap.get(ev.pointerId);
+    if (!entry) return;
+    try {
+      const nodeGroup = document.querySelector(`g.graph-node[data-id="${CSS.escape(entry.nodeId)}"]`);
+      nodeGroup && nodeGroup.releasePointerCapture?.(ev.pointerId);
+    } catch (e) {}
+    if (!entry.isDragging) {
+      // confirmed click — highlight immediate inputs (toggle behavior inside)
+      highlightOutgoing(entry.nodeId, svg);
+    }
+    pointerMap.delete(ev.pointerId);
+    ev.stopPropagation();
+  }, { passive: false });
+
+  // pointercancel cleanup
+  wrapper.addEventListener('pointercancel', (ev) => {
+    pointerMap.delete(ev.pointerId);
+  });
+
+  // keyboard support: Enter/Space on group
+  svg.querySelectorAll('g.graph-node[data-id]').forEach(group => {
+    group.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        const nodeId = group.getAttribute('data-id');
+        highlightOutgoing(nodeId, svg);
+      }
+    });
+  });
+
+  // clicking outside clears pulses
+  function onDocClick(e) {
+    if (!svg.contains(e.target)) clearPulses(svg);
+  }
+  document.removeEventListener('click', onDocClick);
+  document.addEventListener('click', onDocClick);
+}
+
+/* ===============================
+   Helper: detect if pointer target is a node (used to prevent starting pan)
+   =============================== */
+function pointerIsOnNode(ev) {
+  return !!(ev.target && ev.target.closest && ev.target.closest('g.graph-node[data-id]'));
+}
+
+/* ===============================
+   Zoom / pan utilities (pointer-based)
+   - pan start is guarded by pointerIsOnNode so nodes handle their own pointers
+   =============================== */
+function ensureResetButton() {
+  let btn = document.querySelector('.graphResetButton');
+  const graphArea = document.getElementById('graphArea');
+  if (!graphArea) return null;
+
+  // If button exists but not in the correct place, remove it so we can recreate correctly
+  if (btn && btn.nextElementSibling !== graphArea) {
+    btn.remove();
+    btn = null;
+  }
+
+  // Create button container if missing
+  if (!btn) {
+    btn = document.createElement('div');
+    btn.className = 'graphResetButton';
+    btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
+
+    // Insert the button directly before the graphArea so it stays above it in document flow
+    graphArea.parentNode.insertBefore(btn, graphArea);
+
+    // Minimal inline styles to center the button and keep it out of the graph's interactive area
+    btn.style.display = 'flex';
+    btn.style.justifyContent = 'center'; // CENTER the button horizontally
+    btn.style.alignItems = 'center';
+    btn.style.padding = '8px 12px';
+    btn.style.boxSizing = 'border-box';
+    btn.style.background = 'transparent';
+    btn.style.zIndex = '20';
+    btn.style.pointerEvents = 'auto';
+  }
+
+  // Ensure the graphArea has top padding so the SVG cannot be panned/zoomed under the button
+  function adjustGraphTopPadding() {
+    if (!btn || !graphArea) return;
+    // Measure button height after layout
+    const h = Math.max(0, btn.offsetHeight || 0);
+    const gap = 8; // small gap between button and graph
+    // Apply padding-top to graphArea; preserve any existing padding-bottom etc.
+    graphArea.style.paddingTop = (h + gap) + 'px';
+  }
+
+  // Run once after insertion to set padding
+  requestAnimationFrame(() => adjustGraphTopPadding());
+
+  // Keep padding correct on window resize (debounced)
+  let resizeTimer = null;
+  function onResize() {
+    if (resizeTimer) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => adjustGraphTopPadding(), 80);
+  }
+  window.removeEventListener('resize', onResize);
+  window.addEventListener('resize', onResize);
+
+  return btn;
+}
+
+function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = {}) {
+  if (!containerEl) return;
+
+  const svg = containerEl.querySelector('svg.graphSVG');
+  const zoomLayer = svg.querySelector('#zoomLayer');
+  const resetBtn = resetButtonEl || document.querySelector('#resetViewBtn');
+
+  let scale = 1;
+  let tx = 0;
+  let ty = 0;
+  let isPanning = false;
+  let startX = 0;
+  let startY = 0;
+  let activePointerId = null;
+
+  function getContentBBox() {
+    const vb = svg.viewBox.baseVal;
+    if (vb && vb.width && vb.height) return { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
+    try { return zoomLayer.getBBox(); } catch (e) { return { x: 0, y: 0, width: svg.clientWidth, height: svg.clientHeight }; }
+  }
+
+  function getViewSizeInSvgCoords() {
+    const rect = svg.getBoundingClientRect();
+    const ptTL = svg.createSVGPoint(); ptTL.x = 0; ptTL.y = 0;
+    const ptBR = svg.createSVGPoint(); ptBR.x = rect.width; ptBR.y = rect.height;
+    const svgTL = ptTL.matrixTransform(svg.getScreenCTM().inverse());
+    const svgBR = ptBR.matrixTransform(svg.getScreenCTM().inverse());
+    return { width: svgBR.x - svgTL.x, height: svgBR.y - svgTL.y };
+  }
+
+  function clampTranslation(proposedTx, proposedTy, proposedScale) {
+    const bbox = getContentBBox();
+    const view = getViewSizeInSvgCoords();
+    const layerW = bbox.width * proposedScale;
+    const layerH = bbox.height * proposedScale;
+
+    const minTxLarge = view.width - layerW - bbox.x * proposedScale;
+    const maxTxLarge = -bbox.x * proposedScale;
+    const minTyLarge = view.height - layerH - bbox.y * proposedScale;
+    const maxTyLarge = -bbox.y * proposedScale;
+
+    const overlapFraction = 0.12;
+    const allowedExtraX = Math.max((view.width - layerW) * (1 - overlapFraction), 0);
+    const allowedExtraY = Math.max((view.height - layerH) * (1 - overlapFraction), 0);
+
+    let clampedTx = proposedTx;
+    let clampedTy = proposedTy;
+
+    if (layerW > view.width) {
+      clampedTx = Math.min(maxTxLarge, Math.max(minTxLarge, proposedTx));
+    } else {
+      const centerTx = (view.width - layerW) / 2 - bbox.x * proposedScale;
+      const minTxSmall = centerTx - allowedExtraX / 2;
+      const maxTxSmall = centerTx + allowedExtraX / 2;
+      clampedTx = Math.min(maxTxSmall, Math.max(minTxSmall, proposedTx));
+    }
+
+    if (layerH > view.height) {
+      clampedTy = Math.min(maxTyLarge, Math.max(minTyLarge, proposedTy));
+    } else {
+      const centerTy = (view.height - layerH) / 2 - bbox.y * proposedScale;
+      const minTySmall = centerTy - allowedExtraY / 2;
+      const maxTySmall = centerTy + allowedExtraY / 2;
+      clampedTy = Math.min(maxTySmall, Math.max(minTySmall, proposedTy));
+    }
+
+    return { tx: clampedTx, ty: clampedTy };
+  }
+
+  function applyTransform() {
+    const clamped = clampTranslation(tx, ty, scale);
+    tx = clamped.tx;
+    ty = clamped.ty;
+    zoomLayer.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
+  }
+
+  function zoomAt(newScale, cx, cy) {
+    const pt = svg.createSVGPoint();
+    pt.x = cx; pt.y = cy;
+    const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
+
+    const localX = (svgP.x - tx) / scale;
+    const localY = (svgP.y - ty) / scale;
+
+    const newTx = svgP.x - newScale * localX;
+    const newTy = svgP.y - newScale * localY;
+
+    scale = newScale;
+    tx = newTx;
+    ty = newTy;
+
+    applyTransform();
+  }
+
+  // Wheel zoom
+  svg.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    const delta = -ev.deltaY;
+    const factor = delta > 0 ? 1.08 : 0.92;
+    const newScale = Math.min(3, Math.max(0.25, +(scale * factor).toFixed(3)));
+    zoomAt(newScale, ev.clientX, ev.clientY);
+  }, { passive: false });
+
+  // Pointer-based pan start (guarded by pointerIsOnNode)
+  svg.addEventListener('pointerdown', (ev) => {
+    // If pointer is on a node, do not start pan here (node handlers will manage)
+    if (pointerIsOnNode(ev)) return;
+    if (ev.button !== 0) return;
+    isPanning = true;
+    activePointerId = ev.pointerId;
+    startX = ev.clientX;
+    startY = ev.clientY;
+    try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+    svg.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('pointermove', (ev) => {
+    if (!isPanning || ev.pointerId !== activePointerId) return;
+    const dxScreen = ev.clientX - startX;
+    const dyScreen = ev.clientY - startY;
+    startX = ev.clientX;
+    startY = ev.clientY;
+
+    const p0 = svg.createSVGPoint(); p0.x = 0; p0.y = 0;
+    const p1 = svg.createSVGPoint(); p1.x = dxScreen; p1.y = dyScreen;
+    const svg0 = p0.matrixTransform(svg.getScreenCTM().inverse());
+    const svg1 = p1.matrixTransform(svg.getScreenCTM().inverse());
+    const dxSvg = svg1.x - svg0.x;
+    const dySvg = svg1.y - svg0.y;
+
+    tx += dxSvg;
+    ty += dySvg;
+    applyTransform();
+  });
+
+  window.addEventListener('pointerup', (ev) => {
+    if (!isPanning || ev.pointerId !== activePointerId) return;
+    isPanning = false;
+    activePointerId = null;
+    try { svg.releasePointerCapture(ev.pointerId); } catch (e) {}
+    svg.style.cursor = 'grab';
+  });
+
+  svg.style.cursor = 'grab';
+
+  function computeAutoFit() {
+    const bbox = getContentBBox();
+    const view = getViewSizeInSvgCoords();
+    if (bbox.width === 0 || bbox.height === 0) {
+      scale = 1; tx = 0; ty = 0; applyTransform(); return;
+    }
+
+    const pad = 0.92;
+    const scaleX = (view.width * pad) / bbox.width;
+    const scaleY = (view.height * pad) / bbox.height;
+    const fitScale = Math.min(scaleX, scaleY);
+
+    scale = Math.min(3, Math.max(0.25, fitScale));
+
+    const layerW = bbox.width * scale;
+    const layerH = bbox.height * scale;
+    tx = (view.width - layerW) / 2 - bbox.x * scale;
+    ty = (view.height - layerH) / 2 - bbox.y * scale;
+
+    applyTransform();
+  }
+
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      computeAutoFit();
+      showToast("View reset");
+    });
+  }
+
+  if (autoFit) requestAnimationFrame(() => computeAutoFit());
+  else applyTransform();
+
+  containerEl._teardownGraphZoom = () => { /* no-op */ };
+
+  function getContentBBox() {
+    try { return zoomLayer.getBBox(); } catch (e) { return { x: 0, y: 0, width: svg.clientWidth, height: svg.clientHeight }; }
+  }
+  function getViewSizeInSvgCoords() {
+    const rect = svg.getBoundingClientRect();
+    const ptTL = svg.createSVGPoint(); ptTL.x = 0; ptTL.y = 0;
+    const ptBR = svg.createSVGPoint(); ptBR.x = rect.width; ptBR.y = rect.height;
+    const svgTL = ptTL.matrixTransform(svg.getScreenCTM().inverse());
+    const svgBR = ptBR.matrixTransform(svg.getScreenCTM().inverse());
+    return { width: svgBR.x - svgTL.x, height: svgBR.y - svgTL.y };
+  }
+}
+
+/* ===============================
+   Render table + graph
+   =============================== */
+function computeRailsNeeded(inputRates, railSpeed) {
+  const total = Object.values(inputRates).reduce((sum, val) => sum + val, 0);
+  return railSpeed && railSpeed > 0 ? Math.ceil(total / railSpeed) : "—";
+}
+
 function renderTable(chainObj, rootItem, rate) {
   const { chain, machineTotals, extractorTotals } = chainObj;
   const { nodes, links } = buildGraphData(chain, rootItem);
-  const graphSVG = renderGraph(nodes, links, rootItem);
-  document.getElementById("graphArea").innerHTML = graphSVG;
-  const railSpeed = parseInt(document.getElementById("railSelect").value);
+  const graphHTML = renderGraph(nodes, links, rootItem);
+
+  const graphArea = document.getElementById("graphArea");
+  if (!graphArea) return;
+
+  const prevWrapper = graphArea.querySelector(".graphWrapper");
+  if (prevWrapper && prevWrapper._teardownGraphZoom) {
+    try { prevWrapper._teardownGraphZoom(); } catch (e) { /* ignore */ }
+  }
+
+  ensureResetButton();
+  graphArea.innerHTML = graphHTML;
+  const wrapper = graphArea.querySelector(".graphWrapper");
+  const resetBtn = document.querySelector('#resetViewBtn');
+  setupGraphZoom(wrapper, { autoFit: true, resetButtonEl: resetBtn });
+
+  // Attach centralized pointer handlers for nodes
+  attachNodePointerHandlers(wrapper);
+
+  const railSpeed = parseInt(document.getElementById("railSelect").value) || 0;
 
   let html = `
     <h2>Production chain for ${rate} / min of ${rootItem}</h2>
@@ -304,38 +825,25 @@ function renderTable(chainObj, rootItem, rate) {
     tierGroups[tier].push([item, data]);
   }
 
-  const sortedTiers = Object.keys(tierGroups)
-    .map(Number)
-    .sort((a, b) => b - a);
+  const sortedTiers = Object.keys(tierGroups).map(Number).sort((a, b) => b - a);
 
   for (const tier of sortedTiers) {
     html += `<tr><td colspan="7"><strong>--- Level ${tier} ---</strong></td></tr>`;
     const rows = tierGroups[tier].sort((a, b) => a[0].localeCompare(b[0]));
-
     for (const [item, data] of rows) {
-      if (data.raw) continue; // ⛔ Skip RAW items
-
+      if (data.raw) continue;
       let outputPerMachine = "—";
       let machines = "—";
       let railsNeeded = "—";
-
       const fillColor = MACHINE_COLORS[data.building] || "#ecf0f1";
-
       const textColor = getTextColor(fillColor);
-
       if (!data.raw) {
         const recipe = getRecipe(item);
-        if (recipe) {
-          outputPerMachine = Math.ceil((recipe.output * 60) / recipe.time); // ✅ integer-safe formula
-        }
+        if (recipe) outputPerMachine = Math.ceil((recipe.output * 60) / recipe.time);
         machines = Math.ceil(data.machines);
         railsNeeded = computeRailsNeeded(data.inputs, railSpeed);
       }
-
-      const inputs = Object.entries(data.inputs || {})
-        .map(([i, amt]) => `${i}: ${Math.ceil(amt)}/min`)
-        .join("<br>");
-
+      const inputs = Object.entries(data.inputs || {}).map(([i, amt]) => `${i}: ${Math.ceil(amt)}/min`).join("<br>");
       html += `
         <tr>
           <td>${item}</td>
@@ -354,223 +862,73 @@ function renderTable(chainObj, rootItem, rate) {
 
   html += `</tbody></table>`;
 
-  // ===============================
-  // MACHINES REQUIRED (total)
-  // ===============================
   html += `
     <h3>MACHINES REQUIRED (total)</h3>
     <table>
-      <thead>
-        <tr><th>Machine Type</th><th>Count</th></tr>
-      </thead>
+      <thead><tr><th>Machine Type</th><th>Count</th></tr></thead>
       <tbody>
-        ${Object.entries(machineTotals)
-          .sort((a, b) => b[1] - a[1])
-          .map(([type, count]) => `
-            <tr>
-              <td>${type}</td>
-              <td>${Math.ceil(count)}</td>
-            </tr>
-          `).join("")}
+        ${Object.entries(machineTotals).sort((a, b) => b[1] - a[1]).map(([type, count]) => `
+          <tr><td>${type}</td><td>${Math.ceil(count)}</td></tr>
+        `).join("")}
       </tbody>
     </table>
   `;
 
-  // ===============================
-  // EXTRACTION REQUIRED
-  // ===============================
   html += `
     <h3>EXTRACTION REQUIRED</h3>
     <table>
       <thead>
-        <tr>
-          <th>Resource</th>
-          <th>Impure</th>
-          <th>Normal</th>
-          <th>Pure</th>
-          <th>Qty/min</th>
-        </tr>
+        <tr><th>Resource</th><th>Impure</th><th>Normal</th><th>Pure</th><th>Qty/min</th></tr>
       </thead>
       <tbody>
   `;
 
-  const sortedExtractors = Object.entries(extractorTotals)
-    .filter(([_, qty]) => qty > 0)
-    .sort((a, b) => b[1] - a[1]);
-
+  const sortedExtractors = Object.entries(extractorTotals).filter(([_, qty]) => qty > 0).sort((a, b) => b[1] - a[1]);
   for (const [resource, qty] of sortedExtractors) {
     const rounded = Math.ceil(qty);
-
     if (SPECIAL_EXTRACTORS[resource]) {
       const normal = Math.ceil(rounded / SPECIAL_EXTRACTORS[resource]);
-      html += `
-        <tr>
-          <td>${resource}</td>
-          <td>—</td>
-          <td>${normal}</td>
-          <td>—</td>
-          <td>${rounded}</td>
-        </tr>
-      `;
+      html += `<tr><td>${resource}</td><td>—</td><td>${normal}</td><td>—</td><td>${rounded}</td></tr>`;
     } else {
       const impure = Math.ceil(rounded / 60);
       const normal = Math.ceil(rounded / 120);
       const pure = Math.ceil(rounded / 240);
-
-      html += `
-        <tr>
-          <td>${resource}</td>
-          <td>${impure}</td>
-          <td>${normal}</td>
-          <td>${pure}</td>
-          <td>${rounded}</td>
-        </tr>
-      `;
+      html += `<tr><td>${resource}</td><td>${impure}</td><td>${normal}</td><td>${pure}</td><td>${rounded}</td></tr>`;
     }
   }
 
   html += `</tbody></table>`;
-  document.getElementById("outputArea").innerHTML = html;
+  const out = document.getElementById("outputArea");
+  if (out) out.innerHTML = html;
 }
 
-
-// ===============================
-// Graph Rendering
-// ===============================
-function renderGraph(nodes, links, rootItem) {
-  const nodeRadius = 22;
-  // Detect theme for adaptive halo text
-  const isDark = document.body.classList.contains("dark-mode");
-
-  const labelFill = isDark ? "#ffffff" : "#000000";   // text color
-  const labelStroke = isDark ? "#000000" : "#ffffff"; // halo outline
-
-  const columns = {};
-  for (const node of nodes) {
-    if (!columns[node.depth]) columns[node.depth] = [];
-    columns[node.depth].push(node);
-  }
-
-  const colWidth = 200;
-  const rowHeight = 90;
-
-  for (const [depth, colNodes] of Object.entries(columns)) {
-    // Sort by number of outgoing links (more consumers = higher)
-    colNodes.sort((a, b) => {
-      const aOut = links.filter(l => l.to === a.id).length;
-      const bOut = links.filter(l => l.to === b.id).length;
-      return bOut - aOut;
-    });
-
-    colNodes.forEach((node, i) => {
-      node.x = depth * colWidth + 100;
-      node.y = i * rowHeight + 100;
-    });
-  }
-
-  // Compute dynamic SVG size based on node positions
-  const maxX = Math.max(...nodes.map(n => n.x));
-  const maxY = Math.max(...nodes.map(n => n.y));
-
-  const svgWidth = maxX + 200;   // padding on the right
-  const svgHeight = maxY + 200;  // padding below the lowest node
-
-  let svg = `<svg width="${svgWidth}" height="${svgHeight}" xmlns="http://www.w3.org/2000/svg">`;
-
-  for (const link of links) {
-    const from = nodes.find(n => n.id === link.from);
-    const to = nodes.find(n => n.id === link.to);
-
-    svg += `
-      <line x1="${from.x}" y1="${from.y}"
-            x2="${to.x}" y2="${to.y}"
-            stroke="#999" stroke-width="2" />
-    `;
-  }
-
-  for (const node of nodes) {
-    const fillColor = node.raw
-      ? "#f4d03f" // RAW
-      : MACHINE_COLORS[node.building] || "#95a5a6";
-
-    const strokeColor = "#2c3e50";
-
-    const textColor = getTextColor(fillColor);
-
-    svg += `
-      <g>
-        <!-- Label text with halo -->
-        <text x="${node.x}" y="${node.y - 30}"
-              text-anchor="middle" font-size="12" font-weight="600"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="0.6"
-              paint-order="stroke">
-          ${node.label}
-        </text>
-
-        <!-- Node circle -->
-        <circle cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
-                fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
-
-        <!-- Machine count background -->
-        ${node.raw ? "" : (
-          `<rect x="${node.x - 12}" y="${node.y - 8}" width="24" height="16"
-                 fill="${fillColor}" rx="3" ry="3" />`
-        )}
-
-        <!-- Machine count text with halo -->
-        <text x="${node.x}" y="${node.y + 4}"
-              text-anchor="middle" font-size="12" font-weight="600"
-              fill="#ffffff"
-              stroke="#000000" stroke-width="0.6"
-              paint-order="stroke">
-          ${node.raw ? "" : Math.ceil(node.machines)}
-        </text>
-      </g>
-    `;
-  }
-
-  svg += `</svg>`;
-  return svg;
-}
-
-
-// ===============================
-// Calculator Trigger
-// ===============================
+/* ===============================
+   Run calculator & UI wiring
+   =============================== */
 function runCalculator() {
   const item = document.getElementById('itemSelect').value;
-  const rate = parseFloat(document.getElementById('rateInput').value);
+  const rateRaw = document.getElementById('rateInput').value;
+  const rate = parseFloat(rateRaw);
 
   if (!item || isNaN(rate) || rate <= 0) {
-    document.getElementById("outputArea").innerHTML =
-      "<p style='color:red;'>Please select an item and enter a valid rate.</p>";
+    document.getElementById("outputArea").innerHTML = "<p style='color:red;'>Please select an item and enter a valid rate.</p>";
     return;
   }
 
   const chainObj = expandChain(item, rate);
-
   renderTable(chainObj, item, rate);
 
-  // ⭐ Update URL with shareable parameters
   const rail = document.getElementById("railSelect").value;
-
-  const params = new URLSearchParams({
-    item,
-    rate,
-    rail
-  });
-
+  const params = new URLSearchParams({ item, rate, rail });
   history.replaceState(null, "", "?" + params.toString());
 }
 
-// ===============================
-// Dark Mode Toggle
-// ===============================
+/* ===============================
+   Dark mode toggle
+   =============================== */
 function setupDarkMode() {
   const toggle = document.getElementById("darkModeToggle");
   if (!toggle) return;
-
   const saved = localStorage.getItem("darkMode");
   if (saved === "true") {
     document.body.classList.add("dark");
@@ -578,7 +936,6 @@ function setupDarkMode() {
   } else {
     toggle.textContent = "🌙 Dark Mode";
   }
-
   toggle.addEventListener("click", () => {
     const isDark = document.body.classList.toggle("dark");
     localStorage.setItem("darkMode", isDark);
@@ -586,82 +943,105 @@ function setupDarkMode() {
   });
 }
 
-
-// ===============================
-// Initialization
-// ===============================
+/* ===============================
+   Initialization
+   =============================== */
 async function init() {
   setupDarkMode();
-
   const data = await loadRecipes();
   RECIPES = data;
   TIERS = data._tiers || {};
-
-  // Manual override: Basic Building Material is crafted from raw ores but should be Tier 0
   TIERS["Basic Building Material"] = 0;
 
   const itemSelect = document.getElementById('itemSelect');
+  const rateInput = document.getElementById("rateInput");
+  const railSelect = document.getElementById("railSelect");
+
+  if (itemSelect) itemSelect.innerHTML = `<option value="" disabled selected>Select Item Here</option>`;
+  if (railSelect) railSelect.innerHTML = `
+    <option value="120">v1 (120/min)</option>
+    <option value="240">v2 (240/min)</option>
+    <option value="480">v3 (480/min)</option>
+  `;
+  if (rateInput) { rateInput.value = ""; rateInput.dataset.manual = ""; rateInput.placeholder = "Rate (/min)"; }
+
   if (itemSelect) {
-    Object.keys(RECIPES)
-      .filter(k => k !== "_tiers")
-      .sort()
-      .forEach(item => {
-        const option = document.createElement('option');
-        option.value = item;
-        option.textContent = item;
-        itemSelect.appendChild(option);
-      });
+    Object.keys(RECIPES).filter(k => k !== "_tiers").sort().forEach(item => {
+      const option = document.createElement('option');
+      option.value = item;
+      option.textContent = item;
+      itemSelect.appendChild(option);
+    });
   }
 
-  // ⭐ Auto-load shared calculation if URL contains parameters
-  const params = new URLSearchParams(window.location.search);
+  function getNaturalPerMinForSelected() {
+    const slug = itemSelect.value;
+    const recipe = RECIPES[slug];
+    if (!recipe || !recipe.output || !recipe.time) return null;
+    return Math.round((recipe.output / recipe.time) * 60);
+  }
 
+  if (itemSelect && rateInput) {
+    itemSelect.addEventListener("change", () => {
+      const naturalPerMin = getNaturalPerMinForSelected();
+      if (!rateInput.dataset.manual) rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+    });
+
+    rateInput.addEventListener("input", () => {
+      const rawVal = rateInput.value;
+      const numeric = Number(rawVal);
+      if (rawVal === "" || (!isNaN(numeric) && numeric === 0)) {
+        rateInput.dataset.manual = "";
+        const naturalPerMin = getNaturalPerMinForSelected();
+        if (naturalPerMin !== null) rateInput.value = naturalPerMin;
+        else rateInput.value = "";
+        return;
+      }
+      rateInput.dataset.manual = "true";
+    });
+  }
+
+  const params = new URLSearchParams(window.location.search);
   const sharedItem = params.get("item");
   const sharedRate = params.get("rate");
   const sharedRail = params.get("rail");
 
-  if (sharedItem) itemSelect.value = sharedItem;
-  if (sharedRate) document.getElementById("rateInput").value = sharedRate;
-  if (sharedRail) document.getElementById("railSelect").value = sharedRail;
+  if (sharedItem && itemSelect) itemSelect.value = sharedItem;
+  if (sharedRate && rateInput) { rateInput.value = sharedRate; rateInput.dataset.manual = "true"; }
+  if (sharedRail && railSelect) railSelect.value = sharedRail;
+  if (sharedItem && sharedRate) runCalculator();
 
-  // If item + rate exist, auto-run the calculator
-  if (sharedItem && sharedRate) {
-    runCalculator();
-  }
-
-  // ⭐ Calculate button
   const calcButton = document.getElementById("calcButton");
-  if (calcButton) {
-    calcButton.addEventListener("click", () => {
-      runCalculator();
+  if (calcButton) calcButton.addEventListener("click", () => {
+    runCalculator();
+    const item = itemSelect.value;
+    const rate = rateInput.value;
+    const rail = railSelect.value;
+    const newParams = new URLSearchParams({ item, rate, rail });
+    history.replaceState(null, "", "?" + newParams.toString());
+  });
 
-      // ⭐ Update URL with shareable parameters
-      const item = document.getElementById("itemSelect").value;
-      const rate = document.getElementById("rateInput").value;
-      const rail = document.getElementById("railSelect").value;
-
-      const newParams = new URLSearchParams({ item, rate, rail });
-      history.replaceState(null, "", "?" + newParams.toString());
+  const clearBtn = document.getElementById("clearStateBtn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      if (rateInput) rateInput.dataset.manual = "";
+      const base = window.location.origin;
+      if (base.includes("localhost")) { window.location.href = "http://localhost:8000"; return; }
+      window.location.href = "https://srcraftingcalculations.github.io/sr-crafting-calculator/";
     });
   }
 
-  // ⭐ Share button
   const shareButton = document.getElementById("shareButton");
   if (shareButton) {
     shareButton.addEventListener("click", () => {
       const url = window.location.href;
-
-      navigator.clipboard.writeText(url).then(() => {
-        showToast("Shareable link copied!");
-      }).catch(() => {
-        // Fallback for browsers that block clipboard API
+      navigator.clipboard.writeText(url).then(() => showToast("Shareable link copied!")).catch(() => {
         const temp = document.createElement("input");
         temp.value = url;
         document.body.appendChild(temp);
         temp.select();
         document.execCommand("copy");
         temp.remove();
-
         showToast("Shareable link copied!");
       });
     });

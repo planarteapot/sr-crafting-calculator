@@ -18,7 +18,7 @@
   ============================= -->
   <header>
     <!-- Banner image that scales with width -->
-    <img id="headerBanner" src="data/raptura-banner.png" alt="Raptura Banner" />
+    <img id="headerBanner" src="data/SRCC_Banner_2.png" alt="Raptura Banner" />
 
     <!-- Logo -->
     <div id="logoBox">
@@ -47,33 +47,40 @@
 
 
   <!-- ============================
-       CONTROLS (unchanged)
+       TABLE + CONTROLS CONTAINER
+       (⭐ NEW WRAPPER FOR CENTERING)
   ============================= -->
-  <section id="controls">
-    <label for="itemSelect">Item:</label>
-    <select id="itemSelect"></select>
+  <div id="tableContainer">
 
-    <label for="rateInput">Rate (/min):</label>
-    <input type="number" id="rateInput" value="60" min="0" step="1" />
+    <!-- ============================
+         CONTROLS (centered to table)
+    ============================= -->
+    <section id="controls">
+      <label for="itemSelect">Item:</label>
+      <select id="itemSelect"></select>
 
-    <label for="railSelect">Rail Type:</label>
-    <select id="railSelect">
-      <option value="120">v1 (120/min)</option>
-      <option value="240" selected>v2 (240/min)</option>
-      <option value="480">v3 (480/min)</option>
-    </select>
+      <label for="rateInput">Rate (/min):</label>
+      <input type="number" id="rateInput" value="60" min="0" step="1" />
 
-    <button id="calcButton">Calculate</button>
+      <label for="railSelect">Rail Type:</label>
+      <select id="railSelect">
+        <option value="120">v1 (120/min)</option>
+        <option value="240" selected>v2 (240/min)</option>
+        <option value="480">v3 (480/min)</option>
+      </select>
 
-    <button id="shareButton">Share</button>
-  </section>
+      <button id="calcButton">Calculate</button>
+      <button id="clearStateBtn">Clear</button>
+      <button id="shareButton">Share</button>
+    </section>
 
+    <!-- ============================
+         OUTPUT + GRAPH
+    ============================= -->
+    <section id="outputArea"></section>
+    <section id="graphArea"></section>
 
-  <!-- ============================
-       OUTPUT + GRAPH (unchanged)
-  ============================= -->
-  <section id="outputArea"></section>
-  <section id="graphArea"></section>
+  </div> <!-- end #tableContainer -->
 
 
   <!-- ============================
