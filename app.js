@@ -334,11 +334,11 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (final fixes)
-   - Removes any right helper dot for final outputs (maxDepth)
-   - Bypass dot placed at same vertical offset as top anchors and uses same color
-   - Excludes final-output nodes from bypass detection
-   - Preserves previous spine/anchor/connector logic
+   renderGraph (bypass dot exactly aligned with top helper dots)
+   - Full replacement function
+   - Bypass dot Y uses the exact anchorTopPos(node).y value so it matches per-node top helper dots
+   - No right helper dot for nodes in final column (depth === maxDepth)
+   - Preserves BBM alignment, spines, connectors, and other anchor rules
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -444,12 +444,10 @@ function renderGraph(nodes, links, rootItem) {
     if (anyFarConsumer) {
       // compute a single bypass dot position for this column:
       // place it horizontally at the column's output anchor x (use first output),
-      // vertically at the same offset above the node as the per-node top anchor:
-      // bypassY = topOutNode.y - nodeRadius - ANCHOR_OFFSET
-      const outAnchors = outputs.map(n => anchorRightPos(n));
-      const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b)); 
-      const anchorX = anchorRightPos(topOutputNode).x; 
-      const bypassY = anchorTopPos(topOutputNode).y;
+      // vertically use the exact anchorTopPos(topOutputNode).y so it matches per-node top helper dots
+      const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b));
+      const anchorX = anchorRightPos(topOutputNode).x;
+      const bypassY = anchorTopPos(topOutputNode).y; // exact same Y as per-node top helper dot
       needsBypass.set(depth, { x: anchorX, y: bypassY });
     }
   }
@@ -628,7 +626,7 @@ function renderGraph(nodes, links, rootItem) {
 
   // --- Render bypass dots (ONLY the single helper dot per depth) ---
   // Draw these after nodes so they sit on top and are clearly visible.
-  // Use the same color as anchor dots.
+  // Use the same color as anchor dots and the exact same vertical position as per-node top anchors.
   const bypassFill = isDark ? '#ffffff' : '#2c3e50';
   for (const [depth, pos] of needsBypass.entries()) {
     inner += `
