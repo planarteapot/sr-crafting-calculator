@@ -334,15 +334,10 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (connect nodes to helper dots; hide final-output right dots)
-   - Alphabetical columns
-   - BBM aligned with smelter outputs
-   - Helper dots for all except far-left raw and smelters' left anchors
-   - Raw->Smelter/BBM lines drawn node-to-node (center->center)
-   - Anchors spaced by ANCHOR_OFFSET
-   - Spine logic preserved
-   - Connector lines drawn from node edge to anchor dot (left/right)
-   - Final outputs (maxDepth) do NOT show right helper dot
+   renderGraph (with top helper anchors for non-adjacent links)
+   - Adds top anchors when a node's output is consumed by a node more than one depth away
+   - Top anchors are included in spine calculations and rendered above the node
+   - Preserves BBM/smelter/leftmost raw rules and alphabetical layout
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -358,6 +353,8 @@ function renderGraph(nodes, links, rootItem) {
   for (const n of nodes) {
     if (typeof n.hasInputAnchor === 'undefined') n.hasInputAnchor = true;
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
+    // new flag for top anchor (default false)
+    if (typeof n.hasTopAnchor === 'undefined') n.hasTopAnchor = false;
   }
 
   // Align BBM with canonical smelter outputs if present
@@ -373,6 +370,19 @@ function renderGraph(nodes, links, rootItem) {
       const chosenDepth = depths[0];
       const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
       if (bbmNode) bbmNode.depth = chosenDepth;
+    }
+  }
+
+  // --- Detect non-adjacent consumption and mark top anchors ---
+  // For each source node, if any consumer uses it and consumer.depth - source.depth > 1, mark hasTopAnchor = true
+  const nodeById = new Map(nodes.map(n => [n.id, n]));
+  for (const link of links) {
+    const consumer = nodeById.get(link.from);
+    const source = nodeById.get(link.to);
+    if (!consumer || !source) continue;
+    if (typeof consumer.depth !== 'number' || typeof source.depth !== 'number') continue;
+    if ((consumer.depth - source.depth) > 1) {
+      source.hasTopAnchor = true;
     }
   }
 
@@ -412,6 +422,9 @@ function renderGraph(nodes, links, rootItem) {
   function inputAnchorPos(node) {
     return { x: node.x - nodeRadius - ANCHOR_OFFSET, y: node.y };
   }
+  function topAnchorPos(node) {
+    return { x: node.x, y: node.y - nodeRadius - ANCHOR_OFFSET };
+  }
 
   // Determine leftmost depth (minDepth) and rightmost depth (maxDepth)
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
@@ -425,10 +438,13 @@ function renderGraph(nodes, links, rootItem) {
       const depth = depths[i];
       const colNodes = columns[depth] || [];
 
-      // Output anchors in this column (exclude leftmost raw nodes)
-      const outputs = colNodes
-        .filter(n => (n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && !(n.raw && n.depth === minDepth))
-        .map(n => outputAnchorPos(n));
+      // Collect output anchor positions in this column:
+      // include right anchors and top anchors (top anchors are considered part of the "output set")
+      const outputs = [];
+      for (const n of colNodes) {
+        if (n.hasTopAnchor && !(n.raw && n.depth === minDepth)) outputs.push(topAnchorPos(n));
+        if ((n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && !(n.raw && n.depth === minDepth)) outputs.push(outputAnchorPos(n));
+      }
 
       if (outputs.length === 0) continue;
 
@@ -448,6 +464,7 @@ function renderGraph(nodes, links, rootItem) {
         const nextDepth = depths[i + 1];
         const nextColNodes = columns[nextDepth] || [];
 
+        // Input anchors in next column (include top anchors if present there? top anchors are outputs, not inputs)
         const inputs = nextColNodes
           .filter(n => n.hasInputAnchor && !(n.raw && n.depth === minDepth))
           .map(n => inputAnchorPos(n));
@@ -476,8 +493,8 @@ function renderGraph(nodes, links, rootItem) {
 
   // --- Edges: draw only raw->Smelter or raw->BBM lines, node-to-node (center->center) ---
   for (const link of links) {
-    const rawSource = nodes.find(n => n.id === link.to);
-    const consumer = nodes.find(n => n.id === link.from);
+    const rawSource = nodeById.get(link.to);
+    const consumer = nodeById.get(link.from);
     if (!rawSource || !consumer) continue;
 
     const consumerIsBBM = (consumer.id === BBM_ID || consumer.label === BBM_ID);
@@ -517,6 +534,9 @@ function renderGraph(nodes, links, rootItem) {
     // Right anchor: show for nodes that haveOutputAnchor (or BBM always shows right) BUT NOT for final outputs (maxDepth)
     const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM) && (node.depth !== maxDepth);
 
+    // Top anchor: show if node.hasTopAnchor (and not leftmost raw)
+    const showTopAnchor = !hideAllAnchors && node.hasTopAnchor;
+
     // Connector lines from node edge to anchor dot (draw before anchor dot so dot overlays)
     if (showLeftAnchor) {
       const startX = node.x - nodeRadius; // node edge
@@ -534,6 +554,16 @@ function renderGraph(nodes, links, rootItem) {
       const end = outputAnchorPos(node);
       inner += `
         <line class="anchor-connector anchor-connector-right" x1="${startX}" y1="${startY}" x2="${end.x}" y2="${end.y}"
+              stroke="${isDark ? '#444' : '#666'}" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
+      `;
+    }
+
+    if (showTopAnchor) {
+      const startX = node.x;
+      const startY = node.y - nodeRadius; // top edge of node
+      const end = topAnchorPos(node);
+      inner += `
+        <line class="anchor-connector anchor-connector-top" x1="${startX}" y1="${startY}" x2="${end.x}" y2="${end.y}"
               stroke="${isDark ? '#444' : '#666'}" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
       `;
     }
@@ -577,6 +607,18 @@ function renderGraph(nodes, links, rootItem) {
       const by = node.y;
       inner += `
         <g class="anchor anchor-right" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${bx},${by})" tabindex="0" role="button" aria-label="Output anchor for ${escapeHtml(node.label)}">
+          <circle class="anchor-hit" cx="0" cy="0" r="${ANCHOR_HIT_RADIUS}" fill="transparent" pointer-events="all" />
+          <circle class="anchor-dot" cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+        </g>
+      `;
+    }
+
+    // Top anchor (render above node when flagged)
+    if (showTopAnchor) {
+      const tx = node.x;
+      const ty = node.y - nodeRadius - ANCHOR_OFFSET;
+      inner += `
+        <g class="anchor anchor-top" data-node="${escapeHtml(node.id)}" data-side="top" transform="translate(${tx},${ty})" tabindex="0" role="button" aria-label="Top anchor for ${escapeHtml(node.label)}">
           <circle class="anchor-hit" cx="0" cy="0" r="${ANCHOR_HIT_RADIUS}" fill="transparent" pointer-events="all" />
           <circle class="anchor-dot" cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${isDark ? '#ffffff' : '#2c3e50'}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
         </g>
