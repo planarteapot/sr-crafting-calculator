@@ -645,6 +645,20 @@ async function init() {
     });
   }
 
+  // ⭐ Clear State button
+  document.getElementById("clearStateBtn").addEventListener("click", () => {
+    const base = window.location.origin;
+
+    // If running locally
+    if (base.includes("localhost")) {
+      window.location.href = "http://localhost:8000/sr-crafting-calculator/";
+      return;
+    }
+
+    // Otherwise production
+    window.location.href = "https://srcraftingcalculations.github.io/sr-crafting-calculator/";
+  });
+
   // ⭐ Share button
   const shareButton = document.getElementById("shareButton");
   if (shareButton) {
