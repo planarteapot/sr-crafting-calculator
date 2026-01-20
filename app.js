@@ -348,9 +348,9 @@ function buildGraphData(chain, rootItem) {
 }
 
 /* ===============================
-   Replace: renderGraph (draw anchors + placeholders)
-   - Adds left/right anchor circles with data-anchor attributes
-   - Adds faint spine placeholder above each depth column
+   renderGraph (nodes + anchors only)
+   - Draws direct node-to-node wires only for raw sources on the far-left column
+   - Keeps nodes, anchors, and spine placeholders
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -412,18 +412,22 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-  // Edges (unchanged)
+  // --- Edges: only draw direct node-to-node wires for raw sources on the far left ---
+  const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   for (const link of links) {
     const from = nodes.find(n => n.id === link.from);
     const to = nodes.find(n => n.id === link.to);
     if (!from || !to) continue;
 
-    inner += `
-      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
-            x1="${from.x}" y1="${from.y}"
-            x2="${to.x}" y2="${to.y}"
-            stroke="#999" stroke-width="2" stroke-linecap="round" />
-    `;
+    // Only draw if the source is a raw extractor and is displayed on the far left
+    if (from.raw && from.depth === minDepth) {
+      inner += `
+        <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
+              x1="${from.x}" y1="${from.y}"
+              x2="${to.x}" y2="${to.y}"
+              stroke="#999" stroke-width="2" stroke-linecap="round" />
+      `;
+    }
   }
 
   // Nodes + anchors
