@@ -348,7 +348,10 @@ function buildGraphData(chain, rootItem) {
 }
 
 /* ===============================
-   renderGraph (raw-left direct wires to node bodies)
+   renderGraph (raw-left direct wires to smelter bodies — complete)
+   - Draws direct wires from raw sources on the far-left column to their consumers
+   - Uses link.to as the raw source and link.from as the consumer (consumer -> input)
+   - Connects to node center when the target has no left anchor (e.g., smelter with no input anchor)
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -393,10 +396,10 @@ function renderGraph(nodes, links, rootItem) {
   // Build inner SVG
   let inner = '';
 
-  // Spine placeholders
+  // Spine placeholders (one per depth column) - faint vertical guide and helper placeholder area
   for (const depthKey of Object.keys(columns)) {
     const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36;
+    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
     const topY = minY - GRAPH_ROW_HEIGHT;
     const bottomY = maxY + GRAPH_ROW_HEIGHT;
     inner += `
@@ -412,23 +415,25 @@ function renderGraph(nodes, links, rootItem) {
   // --- Edges: draw direct node-to-node wires for raw sources on the far left ---
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   for (const link of links) {
-    const from = nodes.find(n => n.id === link.from);
-    const to = nodes.find(n => n.id === link.to);
-    if (!from || !to) continue;
+    // In your data links are consumer -> input, so:
+    // rawSource = link.to, consumer = link.from
+    const rawSource = nodes.find(n => n.id === link.to);
+    const consumer = nodes.find(n => n.id === link.from);
+    if (!rawSource || !consumer) continue;
 
     // Only draw if the source is a raw extractor and is displayed on the far left
-    if (!(from.raw && from.depth === minDepth)) continue;
+    if (!(rawSource.raw && rawSource.depth === minDepth)) continue;
 
-    // Compute start point: prefer right anchor position if present
-    const startX = from.hasOutputAnchor ? (from.x + nodeRadius + 10) : from.x;
-    const startY = from.y;
+    // Compute start point: prefer right anchor position if present, otherwise node center
+    const startX = rawSource.hasOutputAnchor ? (rawSource.x + nodeRadius + 10) : rawSource.x;
+    const startY = rawSource.y;
 
-    // Compute end point: prefer left anchor position if present; otherwise connect to node center
-    const endX = to.hasInputAnchor ? (to.x - nodeRadius - 10) : to.x;
-    const endY = to.y;
+    // Compute end point: prefer left anchor position if present; otherwise connect to consumer center
+    const endX = consumer.hasInputAnchor ? (consumer.x - nodeRadius - 10) : consumer.x;
+    const endY = consumer.y;
 
     inner += `
-      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
+      <line class="graph-edge" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}"
             x1="${startX}" y1="${startY}"
             x2="${endX}" y2="${endY}"
             stroke="#999" stroke-width="2" stroke-linecap="round" />
