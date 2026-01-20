@@ -566,8 +566,41 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
   const zoomLayer = svg.querySelector('#zoomLayer');
   const slider = containerEl.querySelector('.zoomSlider');
   const btns = containerEl.querySelectorAll('.zoomBtn');
+  const controlsEl = containerEl.querySelector('.graphControls');
 
-  // State
+  // Pin controls to center of viewport horizontally and near the graph vertically
+  function pinControls() {
+    if (!controlsEl) return;
+    controlsEl.style.position = 'fixed';
+    controlsEl.style.left = '50%';
+    controlsEl.style.transform = 'translateX(-50%)';
+    controlsEl.style.zIndex = 9999;
+    controlsEl.style.pointerEvents = 'auto';
+    // Compute top so controls sit just above the graph viewport (but not off-screen)
+    const wrapperRect = containerEl.getBoundingClientRect();
+    const desiredTop = Math.max(12, wrapperRect.top + 8); // 8px inside wrapper, min 12px from top
+    controlsEl.style.top = `${desiredTop}px`;
+  }
+
+  // Unpin (restore) controls if needed
+  function unpinControls() {
+    if (!controlsEl) return;
+    controlsEl.style.position = '';
+    controlsEl.style.left = '';
+    controlsEl.style.transform = '';
+    controlsEl.style.top = '';
+    controlsEl.style.zIndex = '';
+  }
+
+  // Update pinned controls position on scroll/resize
+  function updatePinnedControls() {
+    if (!controlsEl) return;
+    const wrapperRect = containerEl.getBoundingClientRect();
+    const desiredTop = Math.max(12, wrapperRect.top + 8);
+    controlsEl.style.top = `${desiredTop}px`;
+  }
+
+  // State for zoom/pan
   let scale = 1;
   let tx = 0;
   let ty = 0;
@@ -575,64 +608,45 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
   let startX = 0;
   let startY = 0;
 
-  // Helpers to get sizes and bbox
+  // Helpers
   function getViewportRect() {
     return svg.getBoundingClientRect();
   }
 
   function getLayerBBox() {
-    // Use getBBox on the group to get logical bounds in SVG coordinates
     try {
       return zoomLayer.getBBox();
     } catch (e) {
-      // fallback if empty
       return { x: 0, y: 0, width: svg.viewBox.baseVal.width || svg.clientWidth, height: svg.viewBox.baseVal.height || svg.clientHeight };
     }
   }
 
-  // Compute clamped tx/ty so the transformed bbox stays at least partially visible
   function clampTranslation(proposedTx, proposedTy, proposedScale) {
     const bbox = getLayerBBox();
     const view = getViewportRect();
 
-    // Convert view size to SVG coordinates
-    const ptTL = svg.createSVGPoint();
-    ptTL.x = 0; ptTL.y = 0;
-    const ptBR = svg.createSVGPoint();
-    ptBR.x = view.width; ptBR.y = view.height;
+    const ptTL = svg.createSVGPoint(); ptTL.x = 0; ptTL.y = 0;
+    const ptBR = svg.createSVGPoint(); ptBR.x = view.width; ptBR.y = view.height;
     const svgTL = ptTL.matrixTransform(svg.getScreenCTM().inverse());
     const svgBR = ptBR.matrixTransform(svg.getScreenCTM().inverse());
     const viewW = svgBR.x - svgTL.x;
     const viewH = svgBR.y - svgTL.y;
 
-    // After transform, layer occupies:
-    const layerLeft = proposedTx + bbox.x * proposedScale;
-    const layerRight = proposedTx + (bbox.x + bbox.width) * proposedScale;
-    const layerTop = proposedTy + bbox.y * proposedScale;
-    const layerBottom = proposedTy + (bbox.y + bbox.height) * proposedScale;
-
-    // We want at least some overlap: ensure layerRight >= viewLeft and layerLeft <= viewRight
-    // But because coordinates are in SVG space relative to view origin, we treat view origin as 0..viewW/viewH
-    // Compute min/max allowed tx so layer is not completely off-screen
-    const minTx = viewW - (bbox.width * proposedScale) - bbox.x * proposedScale; // push leftmost
-    const maxTx = -bbox.x * proposedScale; // push rightmost
-
+    const minTx = viewW - (bbox.width * proposedScale) - bbox.x * proposedScale;
+    const maxTx = -bbox.x * proposedScale;
     const minTy = viewH - (bbox.height * proposedScale) - bbox.y * proposedScale;
     const maxTy = -bbox.y * proposedScale;
 
-    // If layer is smaller than view, center it
     let clampedTx = proposedTx;
     let clampedTy = proposedTy;
 
     if (bbox.width * proposedScale <= viewW) {
-      // center horizontally
       clampedTx = (viewW - bbox.width * proposedScale) / 2 - bbox.x * proposedScale;
     } else {
       clampedTx = Math.min(maxTx, Math.max(minTx, proposedTx));
     }
 
     if (bbox.height * proposedScale <= viewH) {
-      // center vertically
       clampedTy = (viewH - bbox.height * proposedScale) / 2 - bbox.y * proposedScale;
     } else {
       clampedTy = Math.min(maxTy, Math.max(minTy, proposedTy));
@@ -641,28 +655,19 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     return { tx: clampedTx, ty: clampedTy };
   }
 
-  // Apply transform to zoomLayer and sync slider
   function applyTransform() {
-    // clamp before applying
     const clamped = clampTranslation(tx, ty, scale);
     tx = clamped.tx;
     ty = clamped.ty;
-
     zoomLayer.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
     if (slider) slider.value = scale;
   }
 
-  // Zoom around a screen point (cx, cy)
   function zoomAt(newScale, cx, cy) {
-    // Convert screen coords to svg coords
     const pt = svg.createSVGPoint();
     pt.x = cx; pt.y = cy;
     const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
 
-    // Compute new tx/ty so svgP stays under cursor
-    // current svgP in layer space: (svgP - tx) / scale
-    // after scaling, we want: svgP = newTx + newScale * ((svgP - tx) / scale)
-    // solve for newTx:
     const localX = (svgP.x - tx) / scale;
     const localY = (svgP.y - ty) / scale;
 
@@ -676,7 +681,7 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     applyTransform();
   }
 
-  // Buttons
+  // Button handlers
   btns.forEach(b => {
     b.addEventListener('click', () => {
       const action = b.dataset.action;
@@ -691,7 +696,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
         const newScale = Math.max(0.25, +(scale - 0.1).toFixed(3));
         zoomAt(newScale, centerX, centerY);
       } else if (action === 'reset') {
-        // reset to auto-fit or identity
         if (autoFit) {
           computeAutoFit();
         } else {
@@ -701,7 +705,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     });
   });
 
-  // Slider
   if (slider) {
     slider.addEventListener('input', () => {
       const newScale = parseFloat(slider.value);
@@ -712,7 +715,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     });
   }
 
-  // Wheel zoom (mouse wheel)
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -723,7 +725,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
 
   // Pan (mouse)
   svg.addEventListener('mousedown', (ev) => {
-    // only left button
     if (ev.button !== 0) return;
     isPanning = true;
     startX = ev.clientX;
@@ -733,13 +734,11 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
 
   window.addEventListener('mousemove', (ev) => {
     if (!isPanning) return;
-    // movement in screen coords -> convert to svg delta
     const dxScreen = ev.clientX - startX;
     const dyScreen = ev.clientY - startY;
     startX = ev.clientX;
     startY = ev.clientY;
 
-    // convert screen delta to svg delta using inverse CTM
     const p0 = svg.createSVGPoint(); p0.x = 0; p0.y = 0;
     const p1 = svg.createSVGPoint(); p1.x = dxScreen; p1.y = dyScreen;
     const svg0 = p0.matrixTransform(svg.getScreenCTM().inverse());
@@ -758,7 +757,7 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     svg.style.cursor = 'grab';
   });
 
-  // Touch: pinch to zoom + pan (basic)
+  // Touch handlers
   let lastTouchDist = null;
   let lastTouchCenter = null;
 
@@ -769,7 +768,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
       lastTouchDist = Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
       lastTouchCenter = { x: (t0.clientX + t1.clientX) / 2, y: (t0.clientY + t1.clientY) / 2 };
     } else if (ev.touches.length === 1) {
-      // single touch pan start
       startX = ev.touches[0].clientX;
       startY = ev.touches[0].clientY;
       isPanning = true;
@@ -794,7 +792,6 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
       startX = ev.touches[0].clientX;
       startY = ev.touches[0].clientY;
 
-      // convert screen delta to svg delta
       const p0 = svg.createSVGPoint(); p0.x = 0; p0.y = 0;
       const p1 = svg.createSVGPoint(); p1.x = dx; p1.y = dy;
       const svg0 = p0.matrixTransform(svg.getScreenCTM().inverse());
@@ -811,15 +808,13 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
     isPanning = false;
   });
 
-  // initial cursor
   svg.style.cursor = 'grab';
 
-  // Auto-fit: compute a scale that fits the layer into the viewport and center it
+  // Auto-fit and center
   function computeAutoFit() {
     const bbox = getLayerBBox();
     const view = getViewportRect();
 
-    // Convert view size to SVG coordinates
     const ptTL = svg.createSVGPoint(); ptTL.x = 0; ptTL.y = 0;
     const ptBR = svg.createSVGPoint(); ptBR.x = view.width; ptBR.y = view.height;
     const svgTL = ptTL.matrixTransform(svg.getScreenCTM().inverse());
@@ -833,33 +828,44 @@ function setupGraphZoom(containerEl, { autoFit = true } = {}) {
       return;
     }
 
-    // Fit with some padding
-    const pad = 0.9; // 90% of viewport
+    const pad = 0.9;
     const scaleX = (viewW * pad) / bbox.width;
     const scaleY = (viewH * pad) / bbox.height;
     const fitScale = Math.min(scaleX, scaleY);
 
-    // clamp to allowed range
     scale = Math.min(2.5, Math.max(0.25, fitScale));
 
-    // center the layer
     const layerW = bbox.width * scale;
     const layerH = bbox.height * scale;
     tx = (viewW - layerW) / 2 - bbox.x * scale;
     ty = (viewH - layerH) / 2 - bbox.y * scale;
 
     applyTransform();
+    // After auto-fit, pin controls
+    pinControls();
   }
+
+  // Keep pinned controls updated on scroll/resize
+  const onScrollOrResize = () => updatePinnedControls();
+  window.addEventListener('scroll', onScrollOrResize, { passive: true });
+  window.addEventListener('resize', onScrollOrResize);
 
   // Run auto-fit on first setup if requested
   if (autoFit) {
-    // small timeout to ensure DOM/SVG layout is ready
     requestAnimationFrame(() => {
       computeAutoFit();
     });
   } else {
     applyTransform();
+    pinControls();
   }
+
+  // Clean-up helper in case you re-render graph and want to remove listeners
+  containerEl._teardownGraphZoom = () => {
+    window.removeEventListener('scroll', onScrollOrResize);
+    window.removeEventListener('resize', onScrollOrResize);
+    unpinControls();
+  };
 }
 
 // ===============================
