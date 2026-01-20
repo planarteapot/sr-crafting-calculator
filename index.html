@@ -56,6 +56,8 @@
          CONTROLS (centered to table)
     ============================= -->
     <section id="controls">
+      <button id="infoButton" class="info-bubble" aria-expanded="false" aria-controls="infoPanel" aria-label="Info">ⓘ Info</button>
+
       <label for="itemSelect">Item:</label>
       <select id="itemSelect"></select>
 
@@ -73,6 +75,17 @@
       <button id="clearStateBtn">Clear</button>
       <button id="shareButton">Share</button>
     </section>
+
+    <!-- Info panel (hidden by default) -->
+    <div id="infoPanel" class="info-panel" role="dialog" aria-hidden="true" aria-labelledby="infoTitle">
+      <h3 id="infoTitle">About This Tool</h3>
+      <p>This calculator is maintained by StarRupture Crafting Calculations as a community resource for StarRupture players. It is a fan‑made project and is not affiliated with the StarRupture developers.</p>
+
+      <h4>Issues, Ideas, or Corrections</h4>
+      <p>If you spot incorrect data, run into a bug, or want to suggest a feature, please contact sr.craftioncalculations@gmail.com. Feedback is always welcome.</p>
+
+      <button id="infoClose" class="info-close" aria-label="Close info">Close</button>
+    </div>
 
     <!-- ============================
          OUTPUT + GRAPH
