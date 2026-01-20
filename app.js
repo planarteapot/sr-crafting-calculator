@@ -334,11 +334,11 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (left->right layout)
-   - Hides helper dots for raw nodes on the far-left column
-   - Draws direct node->node wires for those raw sources to their consumers
-   - Draws regular edges for all other links
-   - Keeps spine placeholders and anchors for non-leftmost raw nodes
+   renderGraph (only far-left raw -> Smelter wires)
+   - Draws node->node wires only when:
+     rawSource.raw && rawSource.depth === minDepth && consumer.building === 'Smelter'
+   - Hides helper dots for leftmost raw nodes
+   - Does NOT draw any other edges
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -362,12 +362,12 @@ function renderGraph(nodes, links, rootItem) {
       return (a.label || a.id).localeCompare(b.label || b.id);
     });
     colNodes.forEach((node, i) => {
-      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;   // horizontal spacing per depth (columns)
-      node.y = i * GRAPH_ROW_HEIGHT + 100;              // vertical spacing per index (rows)
+      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;
+      node.y = i * GRAPH_ROW_HEIGHT + 100;
     });
   }
 
-  // Compute content bounds
+  // Bounds
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
@@ -380,46 +380,38 @@ function renderGraph(nodes, links, rootItem) {
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
-  // Build inner SVG
   let inner = '';
 
-  // Spine placeholders (one per depth column) - faint vertical guide and helper placeholder area
+  // Spine placeholders
   for (const depthKey of Object.keys(columns)) {
     const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
+    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36;
     const topY = minY - GRAPH_ROW_HEIGHT;
     const bottomY = maxY + GRAPH_ROW_HEIGHT;
     inner += `
       <g class="spine-placeholder" data-depth="${depth}">
         <line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${bottomY}"
               stroke="${isDark ? '#2b2b2b' : '#e9e9e9'}" stroke-width="1" stroke-dasharray="4 6" opacity="0.35" pointer-events="none" />
-        <!-- helper placeholder area (above nodes) -->
         <rect x="${spineX - 18}" y="${topY - 44}" width="36" height="28" rx="6" ry="6"
               fill="${isDark ? '#222' : '#fff'}" stroke="${isDark ? '#444' : '#ddd'}" stroke-width="1" opacity="0.6" pointer-events="none" />
       </g>
     `;
   }
 
-  // Determine leftmost depth (minDepth)
+  // Leftmost depth
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
 
-  // --- Edges: draw direct node-to-node wires for raw sources on the far left ---
-  // Track drawn raw-direct links to avoid duplication
-  const drawnRawDirect = new Set();
-
+  // Draw only raw->Smelter wires for leftmost raw sources
   for (const link of links) {
-    // links are consumer -> input (consumer consumes input)
+    // links are consumer -> input
     const rawSource = nodes.find(n => n.id === link.to);
     const consumer = nodes.find(n => n.id === link.from);
     if (!rawSource || !consumer) continue;
 
-    // Only draw if the source is a raw extractor and is displayed on the far left
-    if (rawSource.raw && rawSource.depth === minDepth) {
-      // Start at raw node center (node-to-node)
-      const startX = rawSource.x;
+    // Condition: source is raw, on leftmost column, and consumer is a Smelter
+    if (rawSource.raw && rawSource.depth === minDepth && consumer.building === 'Smelter') {
+      const startX = rawSource.x; // center of raw node
       const startY = rawSource.y;
-
-      // End at consumer center OR at consumer left anchor if present
       const endX = consumer.hasInputAnchor ? (consumer.x - nodeRadius - 10) : consumer.x;
       const endY = consumer.y;
 
@@ -429,45 +421,23 @@ function renderGraph(nodes, links, rootItem) {
               x2="${endX}" y2="${endY}"
               stroke="#333" stroke-width="2.6" stroke-linecap="round" />
       `;
-      drawnRawDirect.add(`${link.from}::${link.to}`);
     }
   }
 
-  // --- Regular edges (lighter) for all other links (skip those already drawn) ---
-  for (const link of links) {
-    const key = `${link.from}::${link.to}`;
-    if (drawnRawDirect.has(key)) continue; // skip duplicates
-
-    const from = nodes.find(n => n.id === link.from);
-    const to = nodes.find(n => n.id === link.to);
-    if (!from || !to) continue;
-
-    inner += `
-      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
-            x1="${from.x}" y1="${from.y}"
-            x2="${to.x}" y2="${to.y}"
-            stroke="#999" stroke-width="1.6" stroke-linecap="round" opacity="0.85" />
-    `;
-  }
-
-  // Nodes + anchors
+  // Nodes + anchors (hide anchors for leftmost raw nodes)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
     const textColor = getTextColor(fillColor);
     const labelY = node.y - GRAPH_LABEL_OFFSET;
 
-    // Decide whether to render anchors for this node.
-    // RULE: if node is raw AND node.depth === minDepth, render NO helper dots at all.
     const hideAllAnchors = (node.raw && node.depth === minDepth);
 
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
               text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}"
-              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
-              pointer-events="none">
+              fill="${textColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke" pointer-events="none">
           ${escapeHtml(node.label)}
         </text>
 
@@ -478,14 +448,11 @@ function renderGraph(nodes, links, rootItem) {
 
         <text class="nodeNumber" x="${node.x}" y="${node.y}"
               text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}"
-              stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke"
-              pointer-events="none">
+              fill="${textColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke" pointer-events="none">
           ${node.raw ? "" : Math.ceil(node.machines)}
         </text>
     `;
 
-    // Left input anchor (if present and not hidden)
     if (!hideAllAnchors && node.hasInputAnchor) {
       const ax = node.x - nodeRadius - 10;
       const ay = node.y;
@@ -497,7 +464,6 @@ function renderGraph(nodes, links, rootItem) {
       `;
     }
 
-    // Right output anchor (if present and not hidden)
     if (!hideAllAnchors && node.hasOutputAnchor) {
       const bx = node.x + nodeRadius + 10;
       const by = node.y;
@@ -517,7 +483,7 @@ function renderGraph(nodes, links, rootItem) {
   const viewBoxW = Math.ceil(contentW);
   const viewBoxH = Math.ceil(contentH);
 
-  const svg = `
+  return `
     <div class="graphWrapper" data-vb="${viewBoxX},${viewBoxY},${viewBoxW},${viewBoxH}">
       <div class="graphViewport">
         <svg xmlns="http://www.w3.org/2000/svg"
@@ -531,9 +497,7 @@ function renderGraph(nodes, links, rootItem) {
       </div>
     </div>
   `;
-  return svg;
 }
-
 
 /* ===============================
    Highlighting (strict immediate-only, toggle)
