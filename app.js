@@ -1,5 +1,6 @@
 // ===============================
-// app.js - Full updated script (numbers centered reliably)
+// app.js - Full application script
+// Includes a clearly marked test graph-render block you can edit/toggle
 // ===============================
 
 // ===============================
@@ -23,17 +24,8 @@ let RECIPES = {};
 let TIERS = {};
 
 // ===============================
-// Utilities
+// Visual constants & helpers
 // ===============================
-function getTextColor(bg) {
-  if (!bg || bg[0] !== "#") return "#000000";
-  const r = parseInt(bg.substr(1, 2), 16);
-  const g = parseInt(bg.substr(3, 2), 16);
-  const b = parseInt(bg.substr(5, 2), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
-  return luminance > 150 ? "#000000" : "#ffffff";
-}
-
 const MACHINE_COLORS = {
   "Smelter":      "#e67e22",
   "Furnace":      "#d63031",
@@ -51,13 +43,17 @@ const SPECIAL_EXTRACTORS = {
   "Sulphur Ore": 240
 };
 
-function getRecipe(name) {
-  return RECIPES[name] || null;
+function getTextColor(bg) {
+  if (!bg || bg[0] !== "#") return "#000000";
+  const r = parseInt(bg.substr(1, 2), 16);
+  const g = parseInt(bg.substr(3, 2), 16);
+  const b = parseInt(bg.substr(5, 2), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b);
+  return luminance > 150 ? "#000000" : "#ffffff";
 }
 
-function computeRailsNeeded(inputRates, railSpeed) {
-  const total = Object.values(inputRates).reduce((sum, val) => sum + val, 0);
-  return railSpeed && railSpeed > 0 ? Math.ceil(total / railSpeed) : "—";
+function escapeHtml(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 function showToast(message) {
@@ -71,12 +67,16 @@ function showToast(message) {
   setTimeout(() => {
     toast.classList.remove("show");
     setTimeout(() => toast.remove(), 300);
-  }, 2500);
+  }, 3000);
 }
 
 // ===============================
-// Expand production chain
+// Chain expansion logic
 // ===============================
+function getRecipe(name) {
+  return RECIPES[name] || null;
+}
+
 function expandChain(item, targetRate) {
   const chain = {};
   const machineTotals = {};
@@ -224,40 +224,36 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
-/* ============================
-  Graph rendering (robust, straight-line strategies)
-  Replace previous graph-related code with this block only
-   - Tries Ports -> Offsets -> Bus (no curves)
-   - Uses proximity collision detection
-   - DEBUG toggle and FORCE_STRATEGY for testing
-  ============================ */
-
-/* Tunables */
+// ===============================
+// Graph rendering block (TESTABLE)
+// ===============================
+/*
+  === TEST GRAPH-RENDER BLOCK START ===
+  This entire section implements three straight-line strategies:
+    - Ports (fixed connection slots on target)
+    - Parallel Offsets (small perpendicular offsets)
+    - Bus (short shared connector)
+  It auto-selects the first strategy that avoids endpoint collisions.
+  You can toggle DEBUG and FORCE_STRATEGY below for testing.
+*/
 const GRAPH_COL_WIDTH = 220;
 const GRAPH_ROW_HEIGHT = 120;
 const GRAPH_LABEL_OFFSET = 40;
 const GRAPH_CONTENT_PAD = 64;
 
-/* Strategy params */
-const PORT_COUNT = 4;         // default number of ports to expose
-const OFFSET_SPACING = 10;    // px between parallel offset lines
-const BUS_THRESHOLD = 4;      // create bus when incoming >= threshold
-const BUS_GAP = 36;           // px between target and bus
-const BUS_PORT_SPACING = 18;  // spacing between ports on bus
+const PORT_COUNT = 4;
+const OFFSET_SPACING = 10;
+const BUS_THRESHOLD = 4;
+const BUS_GAP = 36;
+const BUS_PORT_SPACING = 18;
 
-/* Debug / testing */
-const DEBUG = false;          // set true to draw debug markers
-const FORCE_STRATEGY = null;  // 'ports' | 'offsets' | 'bus' or null to auto-pick
+let DEBUG_GRAPH = false;           // set true to draw debug markers
+let FORCE_STRATEGY = null;         // 'ports' | 'offsets' | 'bus' or null
 
-/* Helpers */
-function escapeHtml(str) {
-  return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
 function isDarkMode() {
   return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
 }
 
-/* Layout: assign x,y based on depth and index (stable) */
 function buildInitialLayout(nodes, links) {
   const columns = {};
   for (const node of nodes) {
@@ -265,7 +261,6 @@ function buildInitialLayout(nodes, links) {
     columns[node.depth].push(node);
   }
   for (const [depth, colNodes] of Object.entries(columns)) {
-    // stable ordering: by number of consumers then label
     colNodes.sort((a, b) => {
       const aOut = links.filter(l => l.to === a.id).length;
       const bOut = links.filter(l => l.to === b.id).length;
@@ -279,7 +274,6 @@ function buildInitialLayout(nodes, links) {
   }
 }
 
-/* Build incoming map quickly */
 function buildIncomingMap(links) {
   const incoming = {};
   for (const l of links) {
@@ -289,9 +283,7 @@ function buildIncomingMap(links) {
   return incoming;
 }
 
-/* Proximity collision detection: returns true if any two endpoints for same target are within `eps` px */
 function detectEndpointCollisions(endpoints, eps = 6) {
-  // endpoints: [{toId,x,y}, ...]
   const byTarget = {};
   for (const e of endpoints) {
     byTarget[e.toId] = byTarget[e.toId] || [];
@@ -309,18 +301,41 @@ function detectEndpointCollisions(endpoints, eps = 6) {
   return false;
 }
 
-/* Strategy A: Ports */
+function drawNodesSVG(nodes) {
+  let inner = '';
+  for (const node of nodes) {
+    const fillColor = node.raw ? "#f4d03f" : (MACHINE_COLORS[node.building] || "#95a5a6");
+    const strokeColor = "#2c3e50";
+    const textColor = getTextColor(fillColor);
+    const labelY = node.y - GRAPH_LABEL_OFFSET;
+    inner += `
+      <g>
+        <text class="nodeLabel" x="${node.x}" y="${labelY}"
+              text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
+          ${escapeHtml(node.label)}
+        </text>
+        <circle cx="${node.x}" cy="${node.y}" r="22" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
+        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" />`}
+        <text class="nodeNumber" x="${node.x}" y="${node.y}" text-anchor="middle" font-size="13" font-weight="700"
+              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
+          ${node.raw ? "" : Math.ceil(node.machines)}
+        </text>
+      </g>
+    `;
+  }
+  return inner;
+}
+
 function renderWithPorts(nodes, links) {
   const incoming = buildIncomingMap(links);
-  const portMap = {}; // targetId -> [{x,y},...]
-
-  // compute ports for each node (centered vertically)
+  const portMap = {};
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
     const count = Math.max(PORT_COUNT, ins.length);
     const totalHeight = (count - 1) * OFFSET_SPACING;
     const startY = node.y - totalHeight / 2;
-    const px = node.x - 22 - 6; // left of circle (circle radius ~22)
+    const px = node.x - 22 - 6;
     const ports = [];
     for (let i = 0; i < count; i++) ports.push({ x: px, y: startY + i * OFFSET_SPACING });
     portMap[node.id] = ports;
@@ -329,7 +344,6 @@ function renderWithPorts(nodes, links) {
   let inner = '';
   const endpoints = [];
 
-  // draw edges: assign ports deterministically by source x then y
   for (const node of nodes) {
     const ins = incoming[node.id] || [];
     if (!ins.length) continue;
@@ -337,20 +351,17 @@ function renderWithPorts(nodes, links) {
                          .sort((a, b) => (a.x - b.x) || (a.y - b.y));
     for (let i = 0; i < sortedIns.length; i++) {
       const s = sortedIns[i];
-      const p = portMap[node.id][i]; // deterministic mapping
+      const p = portMap[node.id][i];
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${p.x}" y2="${p.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: p.x, y: p.y });
-      if (DEBUG) inner += `<circle cx="${p.x}" cy="${p.y}" r="3" fill="#ff0000" />`;
+      if (DEBUG_GRAPH) inner += `<circle cx="${p.x}" cy="${p.y}" r="3" fill="#ff0000" />`;
     }
   }
 
-  // draw nodes
   inner += drawNodesSVG(nodes);
-
   return { inner, endpoints };
 }
 
-/* Strategy B: Parallel Offsets */
 function renderWithOffsets(nodes, links) {
   const incoming = buildIncomingMap(links);
   let inner = '';
@@ -370,7 +381,7 @@ function renderWithOffsets(nodes, links) {
       const ty = node.y + offset;
       inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${ty}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: tx, y: ty });
-      if (DEBUG) inner += `<circle cx="${tx}" cy="${ty}" r="3" fill="#00aaff" />`;
+      if (DEBUG_GRAPH) inner += `<circle cx="${tx}" cy="${ty}" r="3" fill="#00aaff" />`;
     }
   }
 
@@ -378,7 +389,6 @@ function renderWithOffsets(nodes, links) {
   return { inner, endpoints };
 }
 
-/* Strategy C: Bus */
 function renderWithBus(nodes, links) {
   const incoming = buildIncomingMap(links);
   let inner = '';
@@ -406,21 +416,19 @@ function renderWithBus(nodes, links) {
         inner += `<rect x="${px - 4}" y="${py - 4}" width="8" height="8" rx="2" ry="2" fill="#fff" stroke="#333"/>`;
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${px}" y2="${py}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: px, y: py });
-        if (DEBUG) inner += `<circle cx="${px}" cy="${py}" r="2" fill="#22aa22" />`;
+        if (DEBUG_GRAPH) inner += `<circle cx="${px}" cy="${py}" r="2" fill="#22aa22" />`;
       }
-      // bus -> target single line
       inner += `<line class="edge" x1="${node.x}" y1="${busY}" x2="${node.x}" y2="${node.y - 22}" stroke="#666" stroke-width="2.5" stroke-linecap="round"/>`;
       endpoints.push({ toId: node.id, x: node.x, y: node.y - 22 });
-      if (DEBUG) inner += `<circle cx="${node.x}" cy="${busY}" r="3" fill="#aa22aa" />`;
+      if (DEBUG_GRAPH) inner += `<circle cx="${node.x}" cy="${busY}" r="3" fill="#aa22aa" />`;
     } else {
-      // direct lines to left center
       const tx = node.x - 22 - 6;
       const sortedIns = ins.map(id => nodes.find(n => n.id === id))
                            .sort((a, b) => (a.x - b.x) || (a.y - b.y));
       for (const s of sortedIns) {
         inner += `<line class="edge" x1="${s.x + 22}" y1="${s.y}" x2="${tx}" y2="${node.y}" stroke="#666" stroke-width="2" stroke-linecap="round"/>`;
         endpoints.push({ toId: node.id, x: tx, y: node.y });
-        if (DEBUG) inner += `<circle cx="${tx}" cy="${node.y}" r="3" fill="#999999" />`;
+        if (DEBUG_GRAPH) inner += `<circle cx="${tx}" cy="${node.y}" r="3" fill="#999999" />`;
       }
     }
   }
@@ -429,38 +437,9 @@ function renderWithBus(nodes, links) {
   return { inner, endpoints };
 }
 
-/* Draw nodes helper (keeps consistent visuals) */
-function drawNodesSVG(nodes) {
-  let inner = '';
-  for (const node of nodes) {
-    const fillColor = node.raw ? "#f4d03f" : (MACHINE_COLORS[node.building] || "#95a5a6");
-    const strokeColor = "#2c3e50";
-    const textColor = getTextColor(fillColor);
-    const labelY = node.y - GRAPH_LABEL_OFFSET;
-    inner += `
-      <g>
-        <text class="nodeLabel" x="${node.x}" y="${labelY}"
-              text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${escapeHtml(node.label)}
-        </text>
-        <circle cx="${node.x}" cy="${node.y}" r="22" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" />
-        ${node.raw ? "" : `<rect x="${node.x - 14}" y="${node.y - 10}" width="28" height="20" fill="${fillColor}" rx="4" ry="4" />`}
-        <text class="nodeNumber" x="${node.x}" y="${node.y}" text-anchor="middle" font-size="13" font-weight="700"
-              fill="${textColor}" stroke="${isDarkMode() ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke">
-          ${node.raw ? "" : Math.ceil(node.machines)}
-        </text>
-      </g>
-    `;
-  }
-  return inner;
-}
-
-/* Try strategies in order (or forced) and return inner SVG content */
 function tryStrategiesAndRender(nodes, links) {
   buildInitialLayout(nodes, links);
 
-  // Strategy order or forced
   const order = FORCE_STRATEGY ? [FORCE_STRATEGY] : ['ports', 'offsets', 'bus'];
 
   for (const strat of order) {
@@ -469,25 +448,19 @@ function tryStrategiesAndRender(nodes, links) {
     else if (strat === 'offsets') result = renderWithOffsets(nodes, links);
     else result = renderWithBus(nodes, links);
 
-    // collision test: use small epsilon so near endpoints count as collision
     if (!detectEndpointCollisions(result.endpoints, 6)) {
-      if (DEBUG) console.log('Selected strategy:', strat);
+      if (DEBUG_GRAPH) console.log('Selected strategy:', strat);
       return result.inner;
     }
-    // otherwise continue to next strategy
   }
 
-  // fallback: return bus rendering (should resolve collisions)
   const fallback = renderWithBus(nodes, links);
   return fallback.inner;
 }
 
-/* Final renderGraph (keeps viewBox padding and returns HTML string) */
 function renderGraph(nodes, links, rootItem) {
-  // nodes and links expected from buildGraphData
   const inner = tryStrategiesAndRender(nodes, links, rootItem);
 
-  // compute content bbox from node positions
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
@@ -521,36 +494,25 @@ function renderGraph(nodes, links, rootItem) {
   `;
   return svg;
 }
-
-/* ============================
-  End of replacement block
-   ============================ */
-
-// small helper to avoid injecting raw HTML from labels
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
+/* === TEST GRAPH-RENDER BLOCK END === */
 
 // ===============================
-// Reset button helper
+// Graph zoom/pan & reset (unchanged)
 // ===============================
 function ensureResetButton() {
   let btn = document.querySelector('.graphResetButton');
   if (btn) return btn;
-  const container = document.getElementById('tableContainer') || document.body;
+
   btn = document.createElement('div');
   btn.className = 'graphResetButton';
   btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
-  container.appendChild(btn);
+
+  const tableContainer = document.getElementById('tableContainer') || document.body;
+  tableContainer.appendChild(btn);
+
   return btn;
 }
 
-// ===============================
-// Zoom / pan setup (wheel + drag + reset)
-// ===============================
 function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = {}) {
   if (!containerEl) return;
 
@@ -645,7 +607,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
-  // Wheel zoom
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -654,7 +615,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     zoomAt(newScale, ev.clientX, ev.clientY);
   }, { passive: false });
 
-  // Pan (left click)
   svg.addEventListener('mousedown', (ev) => {
     if (ev.button !== 0) return;
     isPanning = true;
@@ -688,7 +648,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     svg.style.cursor = 'grab';
   });
 
-  // Touch handlers (pinch + pan)
   let lastTouchDist = null;
   let lastTouchCenter = null;
 
@@ -773,13 +732,15 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   if (autoFit) requestAnimationFrame(() => computeAutoFit());
   else applyTransform();
 
-  containerEl._teardownGraphZoom = () => {
-    // no-op cleanup placeholder (listeners are global; if you re-render often you may want to remove them)
-  };
+  containerEl._teardownGraphZoom = () => { /* no-op */ };
+
+  function getContentBBox() {
+    try { return zoomLayer.getBBox(); } catch (e) { return { x: 0, y: 0, width: svg.clientWidth, height: svg.clientHeight }; }
+  }
 }
 
 // ===============================
-// Render table + graph
+// Table rendering (injects graph + table + reset button)
 // ===============================
 function renderTable(chainObj, rootItem, rate) {
   const { chain, machineTotals, extractorTotals } = chainObj;
@@ -794,7 +755,6 @@ function renderTable(chainObj, rootItem, rate) {
     try { prevWrapper._teardownGraphZoom(); } catch (e) { /* ignore */ }
   }
 
-  // Ensure reset button exists
   ensureResetButton();
 
   graphArea.innerHTML = graphHTML;
@@ -906,7 +866,15 @@ function renderTable(chainObj, rootItem, rate) {
 }
 
 // ===============================
-// Run calculator
+// Rails helper
+// ===============================
+function computeRailsNeeded(inputRates, railSpeed) {
+  const total = Object.values(inputRates).reduce((sum, val) => sum + val, 0);
+  return railSpeed && railSpeed > 0 ? Math.ceil(total / railSpeed) : "—";
+}
+
+// ===============================
+// Calculator trigger & UI wiring
 // ===============================
 function runCalculator() {
   const item = document.getElementById('itemSelect').value;
@@ -926,9 +894,6 @@ function runCalculator() {
   history.replaceState(null, "", "?" + params.toString());
 }
 
-// ===============================
-// Dark mode toggle
-// ===============================
 function setupDarkMode() {
   const toggle = document.getElementById("darkModeToggle");
   if (!toggle) return;
