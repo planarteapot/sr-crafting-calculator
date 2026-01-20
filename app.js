@@ -348,9 +348,7 @@ function buildGraphData(chain, rootItem) {
 }
 
 /* ===============================
-   renderGraph (nodes + anchors only)
-   - Draws direct node-to-node wires only for raw sources on the far-left column
-   - Keeps nodes, anchors, and spine placeholders
+   renderGraph (raw-left direct wires to node bodies)
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -374,8 +372,8 @@ function renderGraph(nodes, links, rootItem) {
       return (a.label || a.id).localeCompare(b.label || b.id);
     });
     colNodes.forEach((node, i) => {
-      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;   // horizontal spacing per depth (columns)
-      node.y = i * GRAPH_ROW_HEIGHT + 100;              // vertical spacing per index (rows)
+      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;
+      node.y = i * GRAPH_ROW_HEIGHT + 100;
     });
   }
 
@@ -395,24 +393,23 @@ function renderGraph(nodes, links, rootItem) {
   // Build inner SVG
   let inner = '';
 
-  // Spine placeholders (one per depth column) - faint vertical guide and helper placeholder area
+  // Spine placeholders
   for (const depthKey of Object.keys(columns)) {
     const depth = Number(depthKey);
-    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36; // slightly right of nodes
+    const spineX = depth * GRAPH_COL_WIDTH + 100 + nodeRadius + 36;
     const topY = minY - GRAPH_ROW_HEIGHT;
     const bottomY = maxY + GRAPH_ROW_HEIGHT;
     inner += `
       <g class="spine-placeholder" data-depth="${depth}">
         <line x1="${spineX}" y1="${topY}" x2="${spineX}" y2="${bottomY}"
               stroke="${isDark ? '#2b2b2b' : '#e9e9e9'}" stroke-width="1" stroke-dasharray="4 6" opacity="0.35" pointer-events="none" />
-        <!-- helper placeholder area (above nodes) -->
         <rect x="${spineX - 18}" y="${topY - 44}" width="36" height="28" rx="6" ry="6"
               fill="${isDark ? '#222' : '#fff'}" stroke="${isDark ? '#444' : '#ddd'}" stroke-width="1" opacity="0.6" pointer-events="none" />
       </g>
     `;
   }
 
-  // --- Edges: only draw direct node-to-node wires for raw sources on the far left ---
+  // --- Edges: draw direct node-to-node wires for raw sources on the far left ---
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   for (const link of links) {
     const from = nodes.find(n => n.id === link.from);
@@ -420,14 +417,22 @@ function renderGraph(nodes, links, rootItem) {
     if (!from || !to) continue;
 
     // Only draw if the source is a raw extractor and is displayed on the far left
-    if (from.raw && from.depth === minDepth) {
-      inner += `
-        <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
-              x1="${from.x}" y1="${from.y}"
-              x2="${to.x}" y2="${to.y}"
-              stroke="#999" stroke-width="2" stroke-linecap="round" />
-      `;
-    }
+    if (!(from.raw && from.depth === minDepth)) continue;
+
+    // Compute start point: prefer right anchor position if present
+    const startX = from.hasOutputAnchor ? (from.x + nodeRadius + 10) : from.x;
+    const startY = from.y;
+
+    // Compute end point: prefer left anchor position if present; otherwise connect to node center
+    const endX = to.hasInputAnchor ? (to.x - nodeRadius - 10) : to.x;
+    const endY = to.y;
+
+    inner += `
+      <line class="graph-edge" data-from="${escapeHtml(from.id)}" data-to="${escapeHtml(to.id)}"
+            x1="${startX}" y1="${startY}"
+            x2="${endX}" y2="${endY}"
+            stroke="#999" stroke-width="2" stroke-linecap="round" />
+    `;
   }
 
   // Nodes + anchors
