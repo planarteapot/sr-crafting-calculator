@@ -179,28 +179,31 @@ table td {
    SVG text spacing and readability
    (increased spacing between labels, numbers, and nodes)
 ============================ */
-.graphSVG text.nodeLabel {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  dominant-baseline: central;
-  paint-order: stroke;
-  stroke-linejoin: round;
-}
+/* SVG text centering helpers */
 .graphSVG text.nodeNumber {
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.2px;
+  text-anchor: middle;
+  /* alignment-baseline and dominant-baseline help some browsers; dy=".35em" does the visual centering */
+  alignment-baseline: central;
   dominant-baseline: central;
   paint-order: stroke;
   stroke-linejoin: round;
 }
 
-/* Slightly larger default SVG text stroke for contrast */
-.graphSVG text {
+/* keep label styling consistent */
+.graphSVG text.nodeLabel {
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
   paint-order: stroke;
-  stroke-width: 0.6px;
   stroke-linejoin: round;
+}
+
+/* reduce stroke width for text so stroke doesn't push glyphs off visually */
+.graphSVG text {
+  stroke-width: 0.6px;
+  paint-order: stroke;
 }
 
 /* Node rect adjustments (if present) */
