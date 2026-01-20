@@ -334,13 +334,15 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (complete)
+   renderGraph (connect nodes to helper dots; hide final-output right dots)
    - Alphabetical columns
    - BBM aligned with smelter outputs
    - Helper dots for all except far-left raw and smelters' left anchors
-   - Raw->Smelter/BBM lines drawn node-to-node
+   - Raw->Smelter/BBM lines drawn node-to-node (center->center)
    - Anchors spaced by ANCHOR_OFFSET
-   - Spine logic: vertical spine per column (bottom->top), horizontal connector to next column top input, then down to next column bottom input
+   - Spine logic preserved
+   - Connector lines drawn from node edge to anchor dot (left/right)
+   - Final outputs (maxDepth) do NOT show right helper dot
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -411,8 +413,9 @@ function renderGraph(nodes, links, rootItem) {
     return { x: node.x - nodeRadius - ANCHOR_OFFSET, y: node.y };
   }
 
-  // Determine leftmost depth (minDepth)
+  // Determine leftmost depth (minDepth) and rightmost depth (maxDepth)
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
+  const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
 
   // Build spine SVG fragments (draw behind nodes)
   let spineSvg = '';
@@ -494,7 +497,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Nodes + anchors (helper dots)
+  // Nodes + anchors + connector lines (connector lines drawn before anchor dots so dots sit on top)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
@@ -511,9 +514,31 @@ function renderGraph(nodes, links, rootItem) {
     // Left anchor: only show if node.hasInputAnchor && not leftmost raw && not smelter && not BBM
     const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM;
 
-    // Right anchor: show for nodes that haveOutputAnchor (or BBM always shows right)
-    const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM);
+    // Right anchor: show for nodes that haveOutputAnchor (or BBM always shows right) BUT NOT for final outputs (maxDepth)
+    const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM) && (node.depth !== maxDepth);
 
+    // Connector lines from node edge to anchor dot (draw before anchor dot so dot overlays)
+    if (showLeftAnchor) {
+      const startX = node.x - nodeRadius; // node edge
+      const startY = node.y;
+      const end = inputAnchorPos(node);
+      inner += `
+        <line class="anchor-connector anchor-connector-left" x1="${startX}" y1="${startY}" x2="${end.x}" y2="${end.y}"
+              stroke="${isDark ? '#444' : '#666'}" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
+      `;
+    }
+
+    if (showRightAnchor) {
+      const startX = node.x + nodeRadius; // node edge
+      const startY = node.y;
+      const end = outputAnchorPos(node);
+      inner += `
+        <line class="anchor-connector anchor-connector-right" x1="${startX}" y1="${startY}" x2="${end.x}" y2="${end.y}"
+              stroke="${isDark ? '#444' : '#666'}" stroke-width="1.8" stroke-linecap="round" opacity="0.95" />
+      `;
+    }
+
+    // Node markup
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
