@@ -1344,7 +1344,7 @@ async function init() {
   const rateInput = document.getElementById("rateInput");
   const railSelect = document.getElementById("railSelect");
 
-  if (itemSelect) itemSelect.innerHTML = `<option value="" disabled selected>Select Item Here</option>`;
+  select.innerHTML = '<option value="" disabled selected>Select Item Here</option>' + items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
   if (railSelect) railSelect.innerHTML = `
     <option value="120">v1 (120/min)</option>
     <option value="240">v2 (240/min)</option>
