@@ -1097,15 +1097,19 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     pt.x = cx; pt.y = cy;
     const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
 
+    // local coordinates inside the zoomLayer before scaling
     const localX = (svgP.x - tx) / scale;
     const localY = (svgP.y - ty) / scale;
 
+    // compute new tx/ty so the point under the cursor stays fixed
     const newTx = svgP.x - newScale * localX;
     const newTy = svgP.y - newScale * localY;
 
+    // apply new scale and clamp immediately
     scale = newScale;
-    tx = newTx;
-    ty = newTy;
+    let clamped = clampTranslation(newTx, newTy, scale);
+    tx = clamped.tx;
+    ty = clamped.ty;
 
     applyTransform();
   }
