@@ -870,6 +870,46 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
+    // ---------------------------------
+    // Bypass detection (DOTS ONLY)
+    // ---------------------------------
+    const bypassOutputDepths = new Set();
+    const bypassInputDepths = new Set();
+
+    for (const link of links) {
+      const from = nodes.find(n => n.id === link.source);
+      const to   = nodes.find(n => n.id === link.target);
+      if (!from || !to) continue;
+
+      if (to.depth - from.depth > 1) {
+        bypassOutputDepths.add(from.depth);
+        bypassInputDepths.add(to.depth);
+      }
+    }
+
+    // top-most node per column
+    const topBypassNodeByDepth = {};
+
+    // outputs
+    for (const link of links) {
+      const from = nodes.find(n => n.id === link.source);
+      const to   = nodes.find(n => n.id === link.target);
+      if (!from || !to) continue;
+
+      if (to.depth - from.depth > 1) {
+        const dOut = from.depth;
+        const dIn  = to.depth;
+
+        if (!topBypassNodeByDepth[dOut] || from.y < topBypassNodeByDepth[dOut].y) {
+          topBypassNodeByDepth[dOut] = from;
+        }
+
+        if (!topBypassNodeByDepth[dIn] || to.y < topBypassNodeByDepth[dIn].y) {
+          topBypassNodeByDepth[dIn] = to;
+        }
+      }
+    }
+
   // ---------------------------------
   // Vertical output spines
   // ---------------------------------
@@ -996,6 +1036,53 @@ function renderGraph(nodes, links, rootItem) {
         fill="${defaultLineColor}" />
     `;
   }
+
+    // ---------------------------------
+    // Bypass helper dots (NO LINES)
+    // ---------------------------------
+    const BYPASS_RADIUS = 5;
+    const BYPASS_Y_OFFSET = 34;
+    const BYPASS_X_INSET = 10;
+
+    // Output-side bypass dots (above right helpers)
+    for (const depth of bypassOutputDepths) {
+      const node = topBypassNodeByDepth[depth];
+      if (!node) continue;
+
+      const x = node.x + nodeRadius + ANCHOR_OFFSET - BYPASS_X_INSET;
+      const y = node.y - BYPASS_Y_OFFSET;
+
+      inner += `
+        <circle
+          cx="${x}"
+          cy="${y}"
+          r="${BYPASS_RADIUS}"
+          fill="var(--bypass-fill)"
+          stroke="var(--bypass-stroke)"
+          stroke-width="1.4"
+        />
+      `;
+    }
+
+    // Input-side bypass dots (above left helpers)
+    for (const depth of bypassInputDepths) {
+      const node = topBypassNodeByDepth[depth];
+      if (!node) continue;
+
+      const x = node.x - nodeRadius - ANCHOR_OFFSET + BYPASS_X_INSET;
+      const y = node.y - BYPASS_Y_OFFSET;
+
+      inner += `
+        <circle
+          cx="${x}"
+          cy="${y}"
+          r="${BYPASS_RADIUS}"
+          fill="var(--bypass-fill)"
+          stroke="var(--bypass-stroke)"
+          stroke-width="1.4"
+        />
+      `;
+    }
 
   // ---------------------------------
   // Nodes
