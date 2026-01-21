@@ -926,7 +926,7 @@ function renderGraph(nodes, links, rootItem) {
           y2="${topAnchorY}"
           stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}"
           stroke-width="2"
-          marker-end="url(#spineArrowUp)"
+          marker-start="url(#spineArrowUp)"
         />
       `;
     }
