@@ -843,7 +843,7 @@ function renderGraph(nodes, links, rootItem) {
         markerHeight="8"
         refX="4"
         refY="4"
-        orient="auto"
+        orient="0"
         markerUnits="userSpaceOnUse">
         <path d="M0,8 L4,0 L8,8 Z" fill="${defaultLineColor}" />
       </marker>
