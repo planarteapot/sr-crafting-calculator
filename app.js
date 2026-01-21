@@ -500,14 +500,17 @@ function renderGraph(nodes, links, rootItem) {
   const _populatedDepths = Object.keys(columns).map(Number).filter(d => Number.isFinite(d));
   const _minPopDepth = _populatedDepths.length ? Math.min(..._populatedDepths) : 0;
 
+  // Layout columns by the sorted order of populated depths (guaranteed consecutive columns)
+  const _depthsOrdered = Object.keys(columns).map(Number).sort((a,b)=>a-b);
+  const _depthIndex = new Map(_depthsOrdered.map((d,i)=>[d,i]));
+
   for (const [depth, colNodes] of Object.entries(columns)) {
-    colNodes.sort((a, b) =>
+    colNodes.sort((a,b) =>
       String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: 'base' })
     );
-
-    const normalizedIndex = Number(depth) - _minPopDepth;
+    const idx = _depthIndex.get(Number(depth)) ?? 0;
     colNodes.forEach((node, i) => {
-      node.x = roundCoord(normalizedIndex * MACHINE_COL_WIDTH + 100);
+      node.x = roundCoord(idx * MACHINE_COL_WIDTH + 100);
       node.y = roundCoord(i * GRAPH_ROW_HEIGHT + 100);
     });
   }
