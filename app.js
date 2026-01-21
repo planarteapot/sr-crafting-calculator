@@ -997,72 +997,72 @@ function renderGraph(nodes, links, rootItem) {
 
   // Start building inner SVG content
   let inner = `
-  <defs>
-    <!-- Standard edge arrows -->
-    <marker id="arrow-right"
-            viewBox="0 0 10 10"
-            refX="9"
-            refY="5"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto">
-      <path d="M0 0 L10 5 L0 10 Z" fill="var(--line-color)" />
-    </marker>
+    <defs>
+      <!-- Standard edge arrows -->
+      <marker id="arrow-right"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto">
+        <path d="M0 0 L10 5 L0 10 Z" fill="var(--line-color)" />
+      </marker>
 
-    <marker id="arrow-up"
-            viewBox="0 0 10 10"
-            refX="5"
-            refY="1"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto">
-      <path d="M0 10 L5 0 L10 10 Z" fill="var(--line-color)" />
-    </marker>
+      <marker id="arrow-up"
+              viewBox="0 0 10 10"
+              refX="5"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto">
+        <path d="M0 10 L5 0 L10 10 Z" fill="var(--line-color)" />
+      </marker>
 
-    <marker id="arrow-down"
-            viewBox="0 0 10 10"
-            refX="5"
-            refY="9"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto">
-      <path d="M0 0 L5 10 L10 0 Z" fill="var(--line-color)" />
-    </marker>
+      <marker id="arrow-down"
+              viewBox="0 0 10 10"
+              refX="5"
+              refY="5"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto">
+        <path d="M0 0 L5 10 L10 0 Z" fill="var(--line-color)" />
+      </marker>
 
-    <!-- Spine flow arrow (LEFT → RIGHT) -->
-    <marker id="spineArrow"
-            viewBox="0 0 8 8"
-            refX="7"
-            refY="4"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto"
-            markerUnits="strokeWidth">
-      <path d="M0 0 L8 4 L0 8 Z" fill="var(--spine-color)" />
-    </marker>
+      <!-- Spine arrow: RIGHT only -->
+      <marker id="spineArrow"
+              viewBox="0 0 8 8"
+              refX="7"
+              refY="4"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+              markerUnits="strokeWidth">
+        <path d="M0 0 L8 4 L0 8 Z" fill="var(--spine-color)" />
+      </marker>
 
-    <!-- Spine flow arrow (BOTTOM → TOP) -->
-    <marker id="spineArrowUp"
-            viewBox="0 0 8 8"
-            refX="4"
-            refY="0"
-            markerWidth="6"
-            markerHeight="6"
-            orient="auto"
-            markerUnits="strokeWidth">
-      <path d="M0 6 L4 0 L8 6 Z" fill="var(--spine-color)" />
-    </marker>
+      <!-- Spine arrow: UP (FIXED – NO CLIPPING) -->
+      <marker id="spineArrowUp"
+              viewBox="0 0 8 8"
+              refX="4"
+              refY="4"
+              markerWidth="6"
+              markerHeight="6"
+              orient="auto"
+              markerUnits="strokeWidth">
+        <path d="M0 6 L4 2 L8 6 Z" fill="var(--spine-color)" />
+      </marker>
 
-    <!-- Label backdrop -->
-    <filter id="labelBackdrop" x="-40%" y="-40%" width="180%" height="180%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blurred" />
-      <feDropShadow dx="0" dy="1" stdDeviation="1.5"
-                    flood-color="#000" flood-opacity="0.25" />
-      <feComposite in="blurred" in2="SourceGraphic" operator="over" />
-    </filter>
-  </defs>
-  ${spineSvg}
-`;
+      <!-- Label backdrop -->
+      <filter id="labelBackdrop" x="-40%" y="-40%" width="180%" height="180%">
+        <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blurred" />
+        <feDropShadow dx="0" dy="1" stdDeviation="1.5"
+                      flood-color="#000" flood-opacity="0.25" />
+        <feComposite in="blurred" in2="SourceGraphic" operator="over" />
+      </filter>
+    </defs>
+    ${spineSvg}
+  `;
 
   // --- Direct node-to-node center lines (restricted, with reversed-link handling) ---
   (function emitDirectNodeLines() {
