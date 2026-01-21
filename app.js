@@ -773,7 +773,7 @@ function renderGraph(nodes, links, rootItem) {
   const ANCHOR_OFFSET = 18;
   const ARROW_HALF_WIDTH = 5;
   const ARROW_HEIGHT = 8;
-  const ARROW_OFFSET_Y = 10;
+  const ARROW_VISUAL_OFFSET = ARROW_HEIGHT / 2;
 
   function roundCoord(v) { return Math.round(v * 100) / 100; }
 
@@ -928,14 +928,14 @@ function renderGraph(nodes, links, rootItem) {
       `;
 
       // arrow — short vertical segment, centered & lifted
-      const midY = (y1 + y2) / 2;
+      const arrowY = midY + ARROW_VISUAL_OFFSET;
 
       inner += `
-        <polygon
+        <polygon    
           points="
-            ${x},${midY - ARROW_HEIGHT}
-            ${x - ARROW_HALF_WIDTH},${midY}
-            ${x + ARROW_HALF_WIDTH},${midY}
+            ${x},${arrowY - ARROW_HEIGHT}
+            ${x - ARROW_HALF_WIDTH},${arrowY}
+            ${x + ARROW_HALF_WIDTH},${arrowY}
           "
           fill="${defaultLineColor}" />
       `;
@@ -972,14 +972,14 @@ function renderGraph(nodes, links, rootItem) {
       `;
 
       // arrow — SAME OFFSET MAGNITUDE as output, inverted direction
-      const midY = (y1 + y2) / 2;
+      const arrowY = midY - ARROW_VISUAL_OFFSET;
 
       inner += `
         <polygon
           points="
-            ${x},${midY + ARROW_HEIGHT}
-            ${x - ARROW_HALF_WIDTH},${midY}
-            ${x + ARROW_HALF_WIDTH},${midY}
+            ${x},${arrowY + ARROW_HEIGHT}
+            ${x - ARROW_HALF_WIDTH},${arrowY}
+            ${x + ARROW_HALF_WIDTH},${arrowY}
           "
           fill="${defaultLineColor}" />
       `;
