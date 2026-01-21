@@ -1332,18 +1332,18 @@ function runCalculator() {
 /* ===============================
    Initialization
    =============================== */
-
 async function init() {
   setupDarkMode();
   const data = await loadRecipes();
   RECIPES = data;
-  TIERS = data._tiers || {};
+  TIERS = data._iers || {};
   TIERS["Basic Building Material"] = 0;
 
   const itemSelect = document.getElementById('itemSelect');
   const rateInput = document.getElementById("rateInput");
   const railSelect = document.getElementById("railSelect");
 
+  // ensure placeholder exists
   if (itemSelect) itemSelect.innerHTML = `<option value="" disabled selected>Select Item Here</option>`;
   if (railSelect) railSelect.innerHTML = `
     <option value="120">v1 (120/min)</option>
@@ -1352,8 +1352,14 @@ async function init() {
   `;
   if (rateInput) { rateInput.value = ""; rateInput.dataset.manual = ""; rateInput.placeholder = "Rate (/min)"; }
 
+  // Populate itemSelect with real recipe keys only (exclude internal keys like _tiers)
   if (itemSelect) {
-    Object.keys(RECIPES).filter(k => k !== "_tiers").sort().forEach(item => {
+    const items = Object.keys(RECIPES || {})
+      .filter(k => typeof k === 'string' && !k.startsWith('_'))
+      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+    // Append items (placeholder already set above)
+    items.forEach(item => {
       const option = document.createElement('option');
       option.value = item;
       option.textContent = item;
@@ -1422,7 +1428,17 @@ async function init() {
   const sharedRate = params.get("rate");
   const sharedRail = params.get("rail");
 
-  if (sharedItem && itemSelect) itemSelect.value = sharedItem;
+  // If a shared item is present but not in the select options, add it so the value can be set
+  if (sharedItem && itemSelect) {
+    const exists = Array.from(itemSelect.options).some(o => o.value === sharedItem);
+    if (!exists) {
+      const opt = document.createElement('option');
+      opt.value = sharedItem;
+      opt.textContent = sharedItem;
+      itemSelect.appendChild(opt);
+    }
+    itemSelect.value = sharedItem;
+  }
   if (sharedRate && rateInput) { rateInput.value = sharedRate; rateInput.dataset.manual = "true"; }
   if (sharedRail && railSelect) railSelect.value = sharedRail;
   if (sharedItem && sharedRate) runCalculator();
