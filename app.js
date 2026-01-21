@@ -854,6 +854,7 @@ function renderGraph(nodes, links, rootItem) {
   // Node → Helper lines + helpers
   // ---------------------------------
   const rightHelpers = [];
+  const leftHelpers = [];
 
   for (const node of nodes) {
     const isSmelter = node.building === 'Smelter';
@@ -882,6 +883,7 @@ function renderGraph(nodes, links, rootItem) {
 
     if (node.hasInputAnchor && !isSmelter && !isBBM && !node.raw) {
       const a = anchorLeftPos(node);
+      leftHelpers.push(a);
       inner += `
         <line x1="${node.x - nodeRadius}" y1="${node.y}"
               x2="${a.x}" y2="${a.y}"
@@ -932,6 +934,50 @@ function renderGraph(nodes, links, rootItem) {
           stroke="transparent"
           stroke-width="1"
           marker-end="url(#arrowUp)" />
+      `;
+    }
+  }
+
+  // ---------------------------------
+  // INPUT SPINES (per segment + arrow)
+  // ---------------------------------
+  const byXInput = {};
+  for (const h of leftHelpers) {
+    if (!byXInput[h.x]) byXInput[h.x] = [];
+    byXInput[h.x].push(h);
+  }
+
+  for (const helpers of Object.values(byXInput)) {
+    if (helpers.length < 2) continue;
+
+    // top → bottom
+    helpers.sort((a, b) => a.y - b.y);
+
+    for (let i = 0; i < helpers.length - 1; i++) {
+      const x = helpers[i].x;
+      const y1 = helpers[i].y;
+      const y2 = helpers[i + 1].y;
+
+      // vertical spine segment
+      inner += `
+        <line
+          x1="${x}" y1="${y1}"
+          x2="${x}" y2="${y2}"
+          stroke="${defaultLineColor}"
+          stroke-width="1.6" />
+      `;
+
+      // arrow — SAME OFFSET MAGNITUDE as output, inverted direction
+      const midY = (y1 + y2) / 2 + 10; // +10 to match output (-10)
+
+      inner += `
+        <polygon
+          points="
+            ${x},${midY + 6}
+            ${x - 6},${midY - 6}
+            ${x + 6},${midY - 6}
+          "
+          fill="${defaultLineColor}" />
       `;
     }
   }
