@@ -369,9 +369,21 @@ function renderGraph(nodes, links, rootItem) {
     if (typeof n.depth === 'undefined') n.depth = 0;
   }
 
-  // Force BBM into depth 0 (level 0 column)
+  // place BBM in the smelter column instead of forcing depth 0
   const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
-  if (bbmNode) bbmNode.depth = 0;
+  if (bbmNode) {
+    const smelterDepths = nodes.filter(n => n.building === 'Smelter').map(n => n.depth);
+    const fallbackDepths = nodes
+      .filter(n => ['Calcium Block','Titanium Bar','Wolfram Bar'].includes(n.id))
+      .map(n => n.depth);
+    const candidateDepths = smelterDepths.length ? smelterDepths : fallbackDepths;
+    if (candidateDepths.length) {
+      const counts = {};
+      candidateDepths.forEach(d => counts[d] = (counts[d] || 0) + 1);
+      const chosenDepth = Number(Object.keys(counts).sort((a,b) => counts[b] - counts[a])[0]);
+      bbmNode.depth = chosenDepth;
+    }
+  }
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
