@@ -934,6 +934,21 @@ function renderGraph(nodes, links, rootItem) {
     const bottomInY = Math.max(...nextInputs.map(p => p.y));
     const nextSpineX = nextInputs[0].x;
 
+    // Vertical output grouping spine (NO arrow)
+    if (bottomAnchorY > topAnchorY) {
+      spineSvg += `
+        <line
+          class="graph-spine-vertical graph-spine-output-group"
+          x1="${spineX}"
+          y1="${topAnchorY}"
+          x2="${spineX}"
+          y2="${bottomAnchorY}"
+          stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}"
+          stroke-width="2"
+        />
+      `;
+    }
+
     // Horizontal flow →
     spineSvg += `
       <line
