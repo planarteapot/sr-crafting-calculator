@@ -1114,26 +1114,55 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
 
   svg.style.cursor = 'grab';
 
+  // Replace the existing computeAutoFit inside setupGraphZoom with this robust version
   function computeAutoFit() {
-    const bbox = getContentBBox();
-    const view = getViewSizeInSvgCoords();
-    if (bbox.width === 0 || bbox.height === 0) {
-      scale = 1; tx = 0; ty = 0; applyTransform(); return;
+    const MAX_ATTEMPTS = 12;        // ~12 * 50ms = 600ms max wait
+    const RETRY_DELAY_MS = 50;
+    let attempts = 0;
+
+    function tryFit() {
+      attempts++;
+      const bbox = getContentBBox();
+      const view = getViewSizeInSvgCoords();
+
+      // Consider bbox valid if width/height are positive and view size is positive
+      const bboxValid = bbox && bbox.width > 1 && bbox.height > 1;
+      const viewValid = view && view.width > 1 && view.height > 1;
+
+      if (!bboxValid || !viewValid) {
+        if (attempts < MAX_ATTEMPTS) {
+          // Wait a short time and try again; use requestAnimationFrame for smoothness
+          setTimeout(() => requestAnimationFrame(tryFit), RETRY_DELAY_MS);
+          return;
+        } else {
+          // Fallback: apply a safe default transform so graph is visible
+          scale = 1;
+          tx = 0;
+          ty = 0;
+          applyTransform();
+          return;
+        }
+      }
+
+      // Compute fit scale and center
+      const pad = 0.92;
+      const scaleX = (view.width * pad) / bbox.width;
+      const scaleY = (view.height * pad) / bbox.height;
+      const fitScale = Math.min(scaleX, scaleY);
+
+      scale = Math.min(3, Math.max(0.25, fitScale));
+      const layerW = bbox.width * scale;
+      const layerH = bbox.height * scale;
+
+      // Center the content in view
+      tx = (view.width - layerW) / 2 - bbox.x * scale;
+      ty = (view.height - layerH) / 2 - bbox.y * scale;
+
+      applyTransform();
     }
 
-    const pad = 0.92;
-    const scaleX = (view.width * pad) / bbox.width;
-    const scaleY = (view.height * pad) / bbox.height;
-    const fitScale = Math.min(scaleX, scaleY);
-
-    scale = Math.min(3, Math.max(0.25, fitScale));
-
-    const layerW = bbox.width * scale;
-    const layerH = bbox.height * scale;
-    tx = (view.width - layerW) / 2 - bbox.x * scale;
-    ty = (view.height - layerH) / 2 - bbox.y * scale;
-
-    applyTransform();
+    // Start the first attempt on next frame so DOM has a chance to paint
+    requestAnimationFrame(tryFit);
   }
 
   if (resetBtn) {
