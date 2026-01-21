@@ -763,6 +763,52 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
+// Normalize node depths so raw nodes are depth 0 and every column is one hop higher
+function normalizeDepthsToHops(nodes, links) {
+  nodes = nodes || window._graphNodes || [];
+  links = links || window._graphLinks || [];
+
+  const byId = new Map(nodes.map(n => [n.id, n]));
+  const adj = new Map(nodes.map(n => [n.id, []]));
+  for (const l of links) {
+    if (adj.has(l.from) && adj.has(l.to)) adj.get(l.from).push(l.to);
+  }
+
+  // BFS from raw nodes
+  const dist = new Map();
+  const q = [];
+  for (const n of nodes) {
+    if (n.raw) { dist.set(n.id, 0); q.push(n.id); }
+  }
+  while (q.length) {
+    const cur = q.shift();
+    for (const nb of adj.get(cur) || []) {
+      if (!dist.has(nb)) { dist.set(nb, dist.get(cur) + 1); q.push(nb); }
+    }
+  }
+
+  // provisional depths and fallback for unreachable nodes
+  const maxDist = dist.size ? Math.max(...dist.values()) : 0;
+  const unreachableDepth = maxDist + 1;
+  for (const n of nodes) {
+    n._provisionalDepth = dist.has(n.id) ? dist.get(n.id) : unreachableDepth;
+  }
+
+  // compact provisional depths to contiguous integers starting at 0
+  const unique = Array.from(new Set(nodes.map(n => n._provisionalDepth))).sort((a,b)=>a-b);
+  const map = new Map(unique.map((d,i)=>[d,i]));
+  for (const n of nodes) {
+    n.depth = map.get(n._provisionalDepth);
+    delete n._provisionalDepth;
+  }
+
+  // expose for debugging and return
+  window._graphNodes = nodes;
+  window._graphLinks = links;
+  window._depthNormalizationMap = map;
+  return { nodes, links, depthMap: map };
+}
+
 // Updated renderGraph: draws direct center→center lines for raw→consumer links,
 // and also handles the common case where the link is reversed in the data
 // (consumer -> raw) by flipping it so a visible raw->consumer center line is emitted.
