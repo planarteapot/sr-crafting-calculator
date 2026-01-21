@@ -1002,6 +1002,7 @@ function renderGraph(nodes, links, rootItem) {
       } else if (b.raw && b.depth === minDepth) {
         src = b; dst = a;
       } else {
+        // neither endpoint qualifies as a raw in the far-left column; skip
         continue;
       }
 
@@ -1017,7 +1018,7 @@ function renderGraph(nodes, links, rootItem) {
       const stroke = isRawDirect ? rawLineColor : lineColor;
       const width = isRawDirect ? 2.6 : 1.6;
 
-      // Draw the line (no helper arrows here). Queue midpoint arrow to render later (on top).
+      // Draw the line and queue a midpoint arrow fragment (arrows are drawn later on top)
       inner += `<line class="graph-edge direct-node-line" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" />`;
       arrowFragments.push(arrowAtMidpoint(x1, y1, x2, y2, stroke, 7));
     }
@@ -1069,7 +1070,7 @@ function renderGraph(nodes, links, rootItem) {
       emittedBypassPairs.add(pairKey);
 
       inner += `<line class="bypass-connector" data-from-depth="${outDepth}" data-to-depth="${consumerDepth}" x1="${outInfo.x}" y1="${outInfo.y}" x2="${inPos.x}" y2="${inPos.y}" stroke="${defaultLineColor}" stroke-width="1.4" />`;
-      // Queue arrow fragment for later so it renders on top of nodes
+      // Queue arrow fragment for later so it renders on top of nodes and helper dots
       arrowFragments.push(arrowAtMidpoint(outInfo.x, outInfo.y, inPos.x, inPos.y, defaultLineColor, 6));
     }
   }
