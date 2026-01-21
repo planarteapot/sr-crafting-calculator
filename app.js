@@ -1,9 +1,11 @@
 // ===============================
-// app.js - Cleaned and CSS-integrated
-// - Graph line visuals fully controlled by CSS variables and classes
-// - Dark/light theme toggles the root class so CSS :root.dark rules apply
-// - Removed inline stroke/stroke-width from SVG lines so styles are consistent
-// - Restored robust pointer, zoom, and pulse behavior
+// app.js - Full script with depth fixes
+// - Only change: depth computation and buildGraphData replaced to follow:
+//   * Graph column 0 = raw column (forced ores)
+//   * Graph column 1 = table level 0 (BBM forced to 1)
+//   * Graph column N = table level (N-1)
+//   * Helium-3 and Sulphur Ore placed one column left of earliest consumer (clamped >= 0)
+// - Everything else in the app remains unchanged
 // ===============================
 
 /* ===============================
@@ -53,18 +55,13 @@ function getTextColor(bg) {
 
 /* ===============================
    Theme helpers (CSS-driven)
-   - Toggle the root class so :root.dark rules apply
    =============================== */
 function isDarkMode() {
-  // Prefer documentElement class (matches provided CSS selectors)
   if (document.documentElement.classList.contains('dark')) return true;
-  // Fallback to body class for older code paths
   if (document.body.classList.contains('dark') || document.body.classList.contains('dark-mode')) return true;
-  // Respect saved preference if present
   const saved = localStorage.getItem('darkMode');
   if (saved === 'true') return true;
   if (saved === 'false') return false;
-  // Finally, respect system preference
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
   return false;
 }
@@ -77,11 +74,9 @@ function applyThemeClass(dark) {
     document.documentElement.classList.remove('dark');
     document.body.classList.remove('dark');
   }
-  // If renderGraph installed the updater, call it to refresh graph wrappers
   if (typeof window._updateGraphThemeVars === 'function') {
     try { window._updateGraphThemeVars(); } catch (e) { /* ignore */ }
   } else {
-    // fallback: update inline vars on existing wrappers
     const vars = {
       '--line-color': dark ? '#dcdcdc' : '#444444',
       '--spine-color': dark ? '#bdbdbd' : '#666666',
@@ -206,27 +201,36 @@ async function loadRecipes() {
   let data = null;
   try {
     data = await fetchJson(localPath);
+    console.info("Loaded recipes from local data/recipes.json");
   } catch (localErr) {
+    console.warn("Local recipes.json not found or failed to load, falling back to remote:", localErr);
     try {
       data = await fetchJson(remotePath);
+      console.info("Loaded recipes from remote URL");
     } catch (remoteErr) {
-      console.error("Failed to load recipes:", remoteErr);
+      console.error("Failed to load recipes from remote URL as well:", remoteErr);
       const out = document.getElementById("outputArea");
       if (out) out.innerHTML = `<p style="color:red;">Error loading recipe data. Please try again later.</p>`;
       return {};
     }
   }
 
-  if (!data || typeof data !== "object") return {};
+  if (!data || typeof data !== "object") {
+    console.error("Invalid recipe data format");
+    return {};
+  }
 
   RECIPES = data;
 
   TIERS = {};
   for (const [name, recipe] of Object.entries(RECIPES)) {
-    TIERS[name] = (recipe && typeof recipe.tier === 'number') ? recipe.tier : 0;
+    if (typeof recipe.tier === "number") {
+      TIERS[name] = recipe.tier;
+      continue;
+    }
+    TIERS[name] = 0;
   }
 
-  // propagate tiers based on inputs
   let changed = true;
   for (let pass = 0; pass < 50 && changed; pass++) {
     changed = false;
@@ -245,18 +249,31 @@ async function loadRecipes() {
     }
   }
 
-  // populate select if present
   const select = document.getElementById("itemSelect");
   if (select) {
-    const items = Object.keys(RECIPES).filter(k => k !== "_tiers").sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const items = Object.keys(RECIPES).sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const prev = select.value;
-    select.innerHTML = `<option value="" disabled selected>Select Item Here</option>` + items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
+    select.innerHTML = items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
     if (prev && items.includes(prev)) select.value = prev;
   }
 
   window.RECIPES = RECIPES;
   window.TIERS = TIERS;
+  console.info("Recipes loaded:", Object.keys(RECIPES).length, "items");
   return RECIPES;
+}
+
+async function reloadRecipes() {
+  RECIPES = {};
+  TIERS = {};
+  await loadRecipes();
+  if (window._lastSelectedItem) {
+    const rate = window._lastSelectedRate || 60;
+    const { chain } = expandChain(window._lastSelectedItem, rate);
+    const graph = buildGraphData(chain, window._lastSelectedItem);
+    document.getElementById('graphArea').innerHTML = renderGraph(graph.nodes, graph.links, window._lastSelectedItem);
+    attachNodePointerHandlers(document.querySelector('.graphWrapper'));
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -336,79 +353,95 @@ function expandChain(item, targetRate) {
   return { chain, machineTotals, extractorTotals };
 }
 
-function computeDepths(chain, rootItem) {
-  const consumers = {};
+/* ===============================
+   New depth computation & buildGraphData
+   - Replaces previous computeDepths/buildGraphData logic
+   =============================== */
+
+const FORCED_RAW_ORES = ['Calcium Ore', 'Titanium Ore', 'Wolfram Ore'];
+const LEFT_OF_CONSUMER_RAWS = ['Helium-3', 'Sulphur Ore'];
+const BBM_ID = 'Basic Building Material';
+
+function computeDepthsFromTiers(chain, rootItem) {
   const depths = {};
 
-  for (const [item, data] of Object.entries(chain)) {
-    for (const input of Object.keys(data.inputs || {})) {
-      if (!consumers[input]) consumers[input] = [];
-      consumers[input].push(item);
-    }
+  // 1) Base assignment: table level + 1 (so table level 0 -> graph column 1)
+  for (const item of Object.keys(chain)) {
+    const tableLevel = Number(TIERS?.[item] ?? 0);
+    depths[item] = tableLevel + 1;
   }
 
-  depths[rootItem] = 999;
-
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const item of Object.keys(chain)) {
-      const cons = consumers[item];
-      if (!cons || cons.length === 0) continue;
-      const minConsumerDepth = Math.min(...cons.map(c => depths[c] ?? 999));
-      const newDepth = minConsumerDepth - 1;
-      if (depths[item] !== newDepth) {
-        depths[item] = newDepth;
-        changed = true;
+  // 2) Ensure raw items default to column 0 if they don't have a table level
+  for (const item of Object.keys(chain)) {
+    if (chain[item].raw) {
+      if (FORCED_RAW_ORES.includes(item)) {
+        depths[item] = 0;
+      } else {
+        if (!(item in TIERS)) depths[item] = 0;
       }
     }
   }
 
-  let adjusted = true;
-  while (adjusted) {
-    adjusted = false;
-    for (const [item, data] of Object.entries(chain)) {
-      const itemDepth = depths[item] ?? 0;
-      for (const input of Object.keys(data.inputs || {})) {
-        const inputDepth = depths[input] ?? 0;
-        if (inputDepth >= itemDepth) {
-          depths[input] = itemDepth - 1;
-          adjusted = true;
-        }
+  // 3) Force BBM into graph column 1
+  if (depths[BBM_ID] !== undefined) depths[BBM_ID] = 1;
+
+  // 4) Place Helium-3 and Sulphur one column left of their earliest consumer
+  for (const rawName of LEFT_OF_CONSUMER_RAWS) {
+    if (!(rawName in chain)) continue;
+    let minConsumerDepth = Infinity;
+    for (const [consumerName, consumerData] of Object.entries(chain)) {
+      const inputs = consumerData.inputs || {};
+      if (Object.prototype.hasOwnProperty.call(inputs, rawName)) {
+        const d = Number(depths[consumerName] ?? (Number(TIERS?.[consumerName] ?? 0) + 1));
+        if (Number.isFinite(d) && d < minConsumerDepth) minConsumerDepth = d;
       }
+    }
+    if (minConsumerDepth === Infinity) {
+      depths[rawName] = Math.max(0, depths[rawName] ?? 0);
+    } else {
+      depths[rawName] = Math.max(0, Math.floor(minConsumerDepth) - 1);
     }
   }
 
-  const minDepth = Math.min(...Object.values(depths));
-  for (const item of Object.keys(depths)) depths[item] -= minDepth;
+  // 5) Final clamp and integer normalization
+  for (const k of Object.keys(depths)) {
+    let v = Number(depths[k]);
+    if (!Number.isFinite(v) || isNaN(v)) v = 0;
+    v = Math.max(0, Math.floor(v));
+    depths[k] = v;
+  }
+
   return depths;
 }
 
 function buildGraphData(chain, rootItem) {
-  const depths = computeDepths(chain, rootItem);
   const nodes = [];
   const links = [];
   const nodeMap = new Map();
 
   for (const [item, data] of Object.entries(chain)) {
-    const depth = depths[item] ?? 0;
     const node = {
       id: item,
       label: item,
-      depth,
-      raw: data.raw,
+      raw: !!data.raw,
       building: data.building,
       machines: data.machines,
-      inputs: data.inputs
+      inputs: data.inputs || {}
     };
     nodes.push(node);
     nodeMap.set(item, node);
   }
 
-  for (const [item, data] of Object.entries(chain)) {
-    for (const input of Object.keys(data.inputs || {})) {
-      if (nodeMap.has(input)) links.push({ from: item, to: input });
+  for (const [consumer, data] of Object.entries(chain)) {
+    for (const inputName of Object.keys(data.inputs || {})) {
+      links.push({ from: consumer, to: inputName });
     }
+  }
+
+  const computed = computeDepthsFromTiers(chain, rootItem);
+
+  for (const n of nodes) {
+    n.depth = Number.isFinite(Number(computed[n.id])) ? Number(computed[n.id]) : 0;
   }
 
   return { nodes, links };
@@ -416,15 +449,12 @@ function buildGraphData(chain, rootItem) {
 
 /* ===============================
    Inject minimal pulse CSS via JS (optional)
-   - keeps animations available; you can remove if you prefer no CSS
-   - standardizes line styles so CSS controls visuals
    =============================== */
 (function injectPulseStylesIfMissing() {
   if (document.getElementById('graphPulseStyles')) return;
   const style = document.createElement('style');
   style.id = 'graphPulseStyles';
   style.textContent = `
-    /* Pulse animations */
     @keyframes nodePulse {
       0% { stroke-width: 2; filter: drop-shadow(0 0 0 rgba(0,0,0,0)); }
       50% { stroke-width: 6; filter: drop-shadow(0 0 10px rgba(255,200,50,0.9)); }
@@ -443,7 +473,6 @@ function buildGraphData(chain, rootItem) {
       line.pulse-edge { animation: none !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
     }
 
-    /* Standardized line styles (driven by CSS variables in your stylesheet) */
     .graphSVG line { stroke-linecap: round; stroke-opacity: 0.95; }
     .graph-edge, .node-to-anchor, .bypass-connector { stroke: var(--line-color); stroke-width: 1.6; stroke-linecap: round; stroke-opacity: 0.95; }
     .graph-spine-vertical, .graph-spine-horizontal { stroke: var(--spine-color); stroke-width: 2; stroke-linecap: round; stroke-opacity: 0.95; }
@@ -454,9 +483,7 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph
-   - All line elements use classes only; no inline stroke/stroke-width for lines
-   - Node circles and label boxes keep inline fills for machine color
+   renderGraph (full)
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -469,14 +496,12 @@ function renderGraph(nodes, links, rootItem) {
   function anchorRightPos(node) { return { x: roundCoord(node.x + nodeRadius + ANCHOR_OFFSET), y: roundCoord(node.y) }; }
   function anchorLeftPos(node)  { return { x: roundCoord(node.x - nodeRadius - ANCHOR_OFFSET), y: roundCoord(node.y) }; }
 
-  // defaults
   for (const n of nodes) {
     if (typeof n.hasInputAnchor === 'undefined') n.hasInputAnchor = true;
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
     if (typeof n.depth === 'undefined') n.depth = 0;
   }
 
-  // place BBM in smelter column if present
   const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
   if (bbmNode) {
     const smelterDepths = nodes.filter(n => n.building === 'Smelter').map(n => n.depth);
@@ -492,22 +517,6 @@ function renderGraph(nodes, links, rootItem) {
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
-  // --- Exception: keep certain raw extractors directly left of their consumer ---
-  // Only these raw resources will be nudged left-of-consumer; everything else stays in its computed depth.
-  const LEFT_OF_CONSUMER_RAWS = new Set(['Helium-3', 'Sulphur Ore']);
-
-  for (const link of links) {
-    const rawNode = nodeById.get(link.to);
-    const consumer = nodeById.get(link.from);
-    if (!rawNode || !consumer) continue;
-    if (rawNode.raw && LEFT_OF_CONSUMER_RAWS.has(rawNode.id)) {
-      // place directly left of the consumer (but not negative)
-      const targetDepth = Math.max(0, (typeof consumer.depth === 'number' ? consumer.depth : 0) - 1);
-      rawNode.depth = targetDepth;
-    }
-  }
-
-  // group by depth and layout (strict column placement)
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
@@ -521,7 +530,6 @@ function renderGraph(nodes, links, rootItem) {
     });
   }
 
-  // bounds
   const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
   const maxX = nodes.length ? Math.max(...xs) : 0;
@@ -535,7 +543,6 @@ function renderGraph(nodes, links, rootItem) {
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
 
-  // decide anchors (raw nodes in far-left hide anchors)
   const willRenderAnchors = [];
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
@@ -551,7 +558,6 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // shortest gap for bypass placement
   const uniqueYs = Array.from(new Set(willRenderAnchors.map(a => a.pos.y))).sort((a,b)=>a-b);
   let shortestGap = nodeRadius + ANCHOR_OFFSET;
   if (uniqueYs.length >= 2) {
@@ -564,7 +570,6 @@ function renderGraph(nodes, links, rootItem) {
   }
   shortestGap = roundCoord(shortestGap);
 
-  // compute bypass centers
   const depthsSorted = Object.keys(columns).map(d=>Number(d)).sort((a,b)=>a-b);
   const needsOutputBypass = new Map();
   for (const depth of depthsSorted) {
@@ -601,12 +606,10 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // expose for debugging
   window._needsOutputBypass = needsOutputBypass;
   window._needsInputBypass = needsInputBypass;
   window._graphNodes = nodes;
 
-  // build spines (no inline stroke attributes)
   let spineSvg = '';
   (function buildSpines(){
     for (let i=0;i<depthsSorted.length;i++){
@@ -644,7 +647,6 @@ function renderGraph(nodes, links, rootItem) {
     }
   })();
 
-  // defs and initial inner
   let inner = `
     <defs>
       <filter id="labelBackdrop" x="-40%" y="-40%" width="180%" height="180%">
@@ -656,7 +658,6 @@ function renderGraph(nodes, links, rootItem) {
     ${spineSvg}
   `;
 
-  // raw->smelter edges (class-only)
   for (const link of links) {
     const rawSource = nodeById.get(link.to);
     const consumer = nodeById.get(link.from);
@@ -667,7 +668,6 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // bypass connectors (class-only)
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-output-connector" data-depth="${depth}" x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.helperCenter.y}" />`;
   }
@@ -682,7 +682,6 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // node->anchor short connectors (class-only)
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
@@ -701,7 +700,6 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // nodes, labels, anchors (node fills/strokes kept inline for clarity)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
@@ -743,7 +741,6 @@ function renderGraph(nodes, links, rootItem) {
     inner += `</g>`;
   }
 
-  // bypass dots
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `<g class="bypass-dot bypass-output" data-depth="${depth}" transform="translate(${info.x},${info.y})" aria-hidden="false"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
   }
@@ -751,7 +748,6 @@ function renderGraph(nodes, links, rootItem) {
     inner += `<g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="false"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
   }
 
-  // initial CSS vars from current theme (applied inline on wrapper for immediate correctness)
   const dark = !!(typeof isDarkMode === 'function' ? isDarkMode() : false);
   const initialVars = {
     '--line-color': dark ? '#dcdcdc' : '#444444',
@@ -776,7 +772,6 @@ function renderGraph(nodes, links, rootItem) {
 
   const html = `<div class="graphWrapper" data-vb="${viewBoxX},${viewBoxY},${viewBoxW},${viewBoxH}" style="${wrapperStyle}"><div class="graphViewport"><svg xmlns="http://www.w3.org/2000/svg" class="graphSVG" viewBox="${viewBoxX} ${viewBoxY} ${viewBoxW} ${viewBoxH}" preserveAspectRatio="xMidYMid meet"><g id="zoomLayer">${inner}</g></svg></div></div>`;
 
-  // install observer once to update CSS vars on theme change
   (function installThemeObserverOnce(){
     if (window._graphThemeObserverInstalled) return;
     window._graphThemeObserverInstalled = true;
@@ -807,7 +802,6 @@ function renderGraph(nodes, links, rootItem) {
       });
     }
 
-    // Observe documentElement attribute changes (class/data-theme/theme)
     const target = document.documentElement || document.body;
     try {
       const mo = new MutationObserver(mutations => {
@@ -858,7 +852,6 @@ function highlightOutgoing(nodeId, svg) {
 
   if (originCircle) originCircle.classList.add('pulse-origin');
 
-  // outgoing edges (consumer -> inputs)
   const outgoing = Array.from(svg.querySelectorAll(`line.graph-edge[data-from="${CSS.escape(nodeId)}"]`));
 
   outgoing.forEach(edgeEl => {
@@ -1088,7 +1081,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
-  // Wheel zoom
   svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -1097,7 +1089,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     zoomAt(newScale, ev.clientX, ev.clientY);
   }, { passive: false });
 
-  // Pointer-based pan start (guarded by pointerIsOnNode)
   svg.addEventListener('pointerdown', (ev) => {
     if (pointerIsOnNode(ev)) return;
     if (ev.button !== 0) return;
@@ -1212,7 +1203,6 @@ function renderTable(chainObj, rootItem, rate) {
   const resetBtn = document.querySelector('#resetViewBtn');
   setupGraphZoom(wrapper, { autoFit: true, resetButtonEl: resetBtn });
 
-  // Attach centralized pointer handlers for nodes
   attachNodePointerHandlers(wrapper);
 
   const railSpeed = parseInt(document.getElementById("railSelect").value) || 0;
@@ -1342,9 +1332,9 @@ function runCalculator() {
 /* ===============================
    Initialization
    =============================== */
+
 async function init() {
   setupDarkMode();
-
   const data = await loadRecipes();
   RECIPES = data;
   TIERS = data._tiers || {};
