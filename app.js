@@ -774,7 +774,7 @@ function renderGraph(nodes, links, rootItem) {
   const ARROW_HALF_WIDTH = 5;
   const ARROW_HEIGHT = 8;
   const ARROW_VISUAL_OFFSET = ARROW_HEIGHT / 2 +2;
-  const LABEL_OFFSET = 18;
+  const LABEL_OFFSET = 6;
 
   function roundCoord(v) { return Math.round(v * 100) / 100; }
 
