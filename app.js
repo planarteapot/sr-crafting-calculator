@@ -342,110 +342,130 @@ function expandChain(item, targetRate) {
    =============================== */
 function computeDepthsFromTiers(chain, rootItem) {
   const depths = {};
+  const MAX_PASSES = 6;
 
-  // 1) Base assignment: use table level directly (no +1 offset)
-  for (const item of Object.keys(chain || {})) {
-    const tableLevel = Number(TIERS?.[item] ?? 0);
-    depths[item] = Number.isFinite(tableLevel) ? tableLevel : 0;
-  }
+  // Helper: initialize base depths from TIERS (no +1)
+  function initBaseDepths() {
+    for (const item of Object.keys(chain || {})) {
+      const tableLevel = Number(TIERS?.[item] ?? 0);
+      depths[item] = Number.isFinite(tableLevel) ? Math.floor(tableLevel) : 0;
+    }
 
-  // 2) Ensure raw items default to column 0 if they don't have a table level
-  for (const item of Object.keys(chain || {})) {
-    if (chain[item].raw) {
-      if (FORCED_RAW_ORES.includes(item)) {
-        depths[item] = 0;
-      } else {
-        if (!(item in TIERS)) depths[item] = 0;
+    // Raw defaults
+    for (const item of Object.keys(chain || {})) {
+      if (chain[item].raw) {
+        if (FORCED_RAW_ORES.includes(item)) depths[item] = 0;
+        else if (!(item in TIERS)) depths[item] = 0;
       }
+    }
+
+    // Heuristic: items whose inputs are all raw -> depth 0
+    for (const [item, data] of Object.entries(chain || {})) {
+      const inputs = data.inputs || {};
+      const inputNames = Object.keys(inputs);
+      if (inputNames.length > 0) {
+        const allInputsRaw = inputNames.every(inName => {
+          const inNode = chain[inName];
+          return !!(inNode && inNode.raw);
+        });
+        if (allInputsRaw) depths[item] = 0;
+      }
+    }
+
+    // Normalize
+    for (const k of Object.keys(depths)) {
+      let v = Number(depths[k]);
+      if (!Number.isFinite(v) || isNaN(v)) v = 0;
+      depths[k] = Math.max(0, Math.floor(v));
     }
   }
 
-  // 3) Heuristic: if an item has inputs and ALL inputs are raw, treat it as depth 0
-  //    (covers blocks/bars produced directly from ores)
-  for (const [item, data] of Object.entries(chain || {})) {
-    const inputs = data.inputs || {};
-    const inputNames = Object.keys(inputs);
-    if (inputNames.length > 0) {
-      const allInputsRaw = inputNames.every(inName => {
-        const inNode = chain[inName];
-        return !!(inNode && inNode.raw);
-      });
-      if (allInputsRaw) {
-        depths[item] = 0;
-      }
-    }
-  }
-
-  // 4) LEFT_OF_CONSUMER_RAWS: place these raws one column left of their earliest consumer.
-  //    Also implement the "first-time input" rule: if the raw exists only because it
-  //    is an input to a consumer whose computed depth is > 0, move the raw to consumerDepth - 1.
-  for (const rawName of LEFT_OF_CONSUMER_RAWS) {
-    if (!(rawName in chain)) continue;
-
-    // Find earliest consumer depth for this raw
-    let minConsumerDepth = Infinity;
-    let anyConsumerFound = false;
+  // Helper: compute earliest consumer depth for a given raw name
+  function earliestConsumerDepth(rawName) {
+    let min = Infinity;
     for (const [consumerName, consumerData] of Object.entries(chain || {})) {
       const inputs = consumerData.inputs || {};
       if (Object.prototype.hasOwnProperty.call(inputs, rawName)) {
-        anyConsumerFound = true;
         const d = Number(depths[consumerName] ?? (Number(TIERS?.[consumerName] ?? 0)));
-        if (Number.isFinite(d) && d < minConsumerDepth) minConsumerDepth = d;
+        if (Number.isFinite(d) && d < min) min = d;
+      }
+    }
+    return min;
+  }
+
+  // Start with base depths
+  initBaseDepths();
+
+  // Iteratively apply raw-placement and optional shifting until stable or max passes
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    const prev = {};
+    for (const k of Object.keys(depths)) prev[k] = depths[k];
+
+    // 1) Place LEFT_OF_CONSUMER_RAWS one column left of earliest consumer (if any)
+    for (const rawName of LEFT_OF_CONSUMER_RAWS) {
+      if (!(rawName in chain)) continue;
+      const minConsumer = earliestConsumerDepth(rawName);
+      if (minConsumer === Infinity) {
+        // no consumer in this chain — keep existing or default 0
+        depths[rawName] = Math.max(0, depths[rawName] ?? 0);
+      } else {
+        // place raw immediately left of earliest consumer
+        const target = Math.max(0, Math.floor(minConsumer) - 1);
+        depths[rawName] = target;
       }
     }
 
-    if (!anyConsumerFound) {
-      // No consumers in this chain; keep existing depth (or default 0)
-      depths[rawName] = Math.max(0, depths[rawName] ?? 0);
-      continue;
+    // 2) For any raw that exists only because it's an input (i.e., present but not a table item),
+    //    ensure it sits immediately left of its earliest consumer as well.
+    for (const item of Object.keys(chain || {})) {
+      if (!chain[item].raw) continue;
+      // If this raw has consumers, place it left of earliest consumer
+      const minConsumer = earliestConsumerDepth(item);
+      if (minConsumer !== Infinity) {
+        depths[item] = Math.max(0, Math.floor(minConsumer) - 1);
+      } else {
+        // otherwise keep current/default
+        depths[item] = Math.max(0, depths[item] ?? 0);
+      }
     }
 
-    if (minConsumerDepth === Infinity) {
-      depths[rawName] = Math.max(0, depths[rawName] ?? 0);
-      continue;
+    // 3) Normalize before deciding shift
+    for (const k of Object.keys(depths)) {
+      let v = Number(depths[k]);
+      if (!Number.isFinite(v) || isNaN(v)) v = 0;
+      depths[k] = Math.max(0, Math.floor(v));
     }
 
-    // If the earliest consumer is at depth > 0, place the raw immediately left of it.
-    // This enforces the "raw goes directly before the output" rule for first-time inputs.
-    const targetDepth = Math.max(0, Math.floor(minConsumerDepth) - 1);
-    depths[rawName] = targetDepth;
-  }
-
-  // 5) Normalize to integers and clamp non-negative before deciding shifts
-  for (const k of Object.keys(depths)) {
-    let v = Number(depths[k]);
-    if (!Number.isFinite(v) || isNaN(v)) v = 0;
-    v = Math.max(0, Math.floor(v));
-    depths[k] = v;
-  }
-
-  // 6) Decide whether to enforce "raws at 0 and everything else shifted right by 1"
-  //    Exception: if NO raw item is at depth 0 (i.e., all raw depths > 0), do nothing.
-  const rawItems = Object.keys(chain || {}).filter(i => chain[i] && chain[i].raw);
-  if (rawItems.length > 0) {
-    const anyRawAtZero = rawItems.some(r => depths[r] === 0);
+    // 4) If any raw is at depth 0, enforce raw-left rule: set all raws to 0 and shift non-raw +1
+    const rawItems = Object.keys(chain || {}).filter(i => chain[i] && chain[i].raw);
+    const anyRawAtZero = rawItems.length > 0 && rawItems.some(r => depths[r] === 0);
     if (anyRawAtZero) {
-      // Force all raw items to depth 0 (preserve forced raw ores)
       for (const r of rawItems) depths[r] = 0;
-
-      // Shift all non-raw items one column to the right (depth += 1)
       for (const k of Object.keys(depths)) {
-        if (!(chain[k] && chain[k].raw)) {
-          depths[k] = Math.max(0, Math.floor(depths[k]) + 1);
-        }
+        if (!(chain[k] && chain[k].raw)) depths[k] = Math.max(0, Math.floor(depths[k]) + 1);
       }
-    } else {
-      // Exception case: all raw items are at depth > 0 on first call — respect computed depths.
-      // No forced shift; keep depths as-is.
     }
+
+    // 5) Final normalization for this pass
+    for (const k of Object.keys(depths)) {
+      let v = Number(depths[k]);
+      if (!Number.isFinite(v) || isNaN(v)) v = 0;
+      depths[k] = Math.max(0, Math.floor(v));
+    }
+
+    // 6) If stable, break early
+    let stable = true;
+    for (const k of Object.keys(depths)) {
+      if (prev[k] !== depths[k]) { stable = false; break; }
+    }
+    if (stable) break;
   }
 
-  // 7) Final clamp and integer normalization (safety)
+  // Final clamp and return
   for (const k of Object.keys(depths)) {
     let v = Number(depths[k]);
     if (!Number.isFinite(v) || isNaN(v)) v = 0;
-    v = Math.max(0, Math.floor(v));
-    depths[k] = v;
+    depths[k] = Math.max(0, Math.floor(v));
   }
 
   return depths;
