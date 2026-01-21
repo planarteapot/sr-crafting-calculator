@@ -945,6 +945,16 @@ function renderGraph(nodes, links, rootItem) {
         <feDropShadow dx="0" dy="1" stdDeviation="1.5" flood-color="#000" flood-opacity="0.25" />
         <feComposite in="blurred" in2="SourceGraphic" operator="over" />
       </filter>
+
+      <!-- Arrow marker (normal) -->
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="6" orient="auto" markerUnits="strokeWidth">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+      </marker>
+
+      <!-- Arrow marker (small) for short helper lines -->
+      <marker id="arrow-small" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="5" orient="auto" markerUnits="strokeWidth">
+        <path d="M 0 0 L 8 4 L 0 8 z" fill="currentColor" />
+      </marker>
     </defs>
     ${spineSvg}
   `;
