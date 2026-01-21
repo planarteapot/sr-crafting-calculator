@@ -1033,7 +1033,7 @@ function renderGraph(nodes, links, rootItem) {
     const height = fontSize + padY*2;
 
     inner += `
-      <g>
+      <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0">
         <rect
           x="${node.x - width/2}"
           y="${node.y - nodeRadius - LABEL_OFFSET - height}"
@@ -1063,8 +1063,10 @@ function renderGraph(nodes, links, rootItem) {
 
   return `
     <div class="graphWrapper">
-      <svg viewBox="${contentX} ${contentY} ${contentW} ${contentH}">
-        ${inner}
+      <svg class="graphSVG" viewBox="${contentX} ${contentY} ${contentW} ${contentH}">
+        <g id="zoomLayer">
+          ${inner}
+        </g>
       </svg>
     </div>
   `;
