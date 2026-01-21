@@ -819,9 +819,14 @@ function renderGraph(nodes, links, rootItem) {
   const minY = Math.min(...ys), maxY = Math.max(...ys);
 
   const contentX = minX - nodeRadius - GRAPH_CONTENT_PAD;
-  const contentY = minY - nodeRadius - GRAPH_CONTENT_PAD;
+  const contentY =
+    minY - nodeRadius - GRAPH_CONTENT_PAD - bypassExtraTop;
   const contentW = (maxX - minX) + nodeRadius*2 + GRAPH_CONTENT_PAD*2;
-  const contentH = (maxY - minY) + nodeRadius*2 + GRAPH_CONTENT_PAD*2;
+  const contentH =
+    (maxY - minY) +
+    nodeRadius * 2 +
+    GRAPH_CONTENT_PAD * 2 +
+    bypassExtraTop;
 
   const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444';
 
@@ -1083,6 +1088,17 @@ function renderGraph(nodes, links, rootItem) {
         />
       `;
     }
+
+    // ---------------------------------
+    // Extra top padding for bypass dots
+    // ---------------------------------
+    const BYPASS_RADIUS = 5;
+    const BYPASS_Y_OFFSET = 34;
+
+    const bypassExtraTop =
+      (bypassOutputDepths.size || bypassInputDepths.size)
+        ? BYPASS_Y_OFFSET + BYPASS_RADIUS + 12
+        : 0;
 
   // ---------------------------------
   // Nodes
