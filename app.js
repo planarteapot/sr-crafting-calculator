@@ -971,15 +971,10 @@ function ensureResetButton() {
 function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = {}) {
   if (!containerEl) return;
 
-  // Prevent double-install
-  if (containerEl._graphZoomInstalled) return;
-  containerEl._graphZoomInstalled = true;
-
   const svg = containerEl.querySelector('svg.graphSVG');
   const zoomLayer = svg.querySelector('#zoomLayer');
   const resetBtn = resetButtonEl || document.querySelector('#resetViewBtn');
 
-  // state
   let scale = 1;
   let tx = 0;
   let ty = 0;
@@ -988,29 +983,10 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   let startY = 0;
   let activePointerId = null;
 
-  // --- Defensive: remove known competing global pointermove listeners (best-effort)
-  // This targets listeners whose source contains "pointerMap" (the competing handler you observed).
-  // It uses getEventListeners when available (DevTools helper). If not available, it does nothing.
-  try {
-    if (typeof getEventListeners === 'function') {
-      const pm = (getEventListeners(window).pointermove || []);
-      pm.forEach(entry => {
-        const fn = entry.listener || entry;
-        try {
-          const src = (fn && fn.toString && fn.toString()) || '';
-          if (src.includes('pointerMap') || src.includes('pointerMap.get') || src.includes('pointerMap.set')) {
-            window.removeEventListener('pointermove', fn);
-            console.info('Removed competing pointermove listener referencing pointerMap');
-          }
-        } catch (e) { /* ignore per-listener errors */ }
-      });
-    }
-  } catch (e) { /* ignore defensive removal errors */ }
-
-  // Helpers (single authoritative definitions)
   function getContentBBox() {
-    try { return zoomLayer.getBBox(); }
-    catch (e) { return { x: 0, y: 0, width: svg.clientWidth || 1, height: svg.clientHeight || 1 }; }
+    const vb = svg.viewBox.baseVal;
+    if (vb && vb.width && vb.height) return { x: vb.x, y: vb.y, width: vb.width, height: vb.height };
+    try { return zoomLayer.getBBox(); } catch (e) { return { x: 0, y: 0, width: svg.clientWidth, height: svg.clientHeight }; }
   }
 
   function getViewSizeInSvgCoords() {
@@ -1022,70 +998,45 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     return { width: svgBR.x - svgTL.x, height: svgBR.y - svgTL.y };
   }
 
-  // Robust screen-space clamp: compute where content would be on screen after proposed transform,
-  // nudge it so edges are within margin, convert pixel delta back to SVG tx/ty.
   function clampTranslation(proposedTx, proposedTy, proposedScale) {
     const bbox = getContentBBox();
-    const rect = svg.getBoundingClientRect();
-    if (!bbox || !rect || !svg.getScreenCTM) return { tx: proposedTx, ty: proposedTy };
+    const view = getViewSizeInSvgCoords();
+    const layerW = bbox.width * proposedScale;
+    const layerH = bbox.height * proposedScale;
 
-    const marginPx = Math.max(12, Math.min(160, Math.round(Math.min(rect.width, rect.height) * 0.04)));
+    const minTxLarge = view.width - layerW - bbox.x * proposedScale;
+    const maxTxLarge = -bbox.x * proposedScale;
+    const minTyLarge = view.height - layerH - bbox.y * proposedScale;
+    const maxTyLarge = -bbox.y * proposedScale;
 
-    // Map an SVG point after applying the proposed transform to screen pixels
-    const toScreen = (svgX, svgY) => {
-      const transformedX = svgX * proposedScale + proposedTx;
-      const transformedY = svgY * proposedScale + proposedTy;
-      const p = svg.createSVGPoint();
-      p.x = transformedX; p.y = transformedY;
-      const screenP = p.matrixTransform(svg.getScreenCTM());
-      return { x: screenP.x, y: screenP.y };
-    };
+    const overlapFraction = 0.12;
+    const allowedExtraX = Math.max((view.width - layerW) * (1 - overlapFraction), 0);
+    const allowedExtraY = Math.max((view.height - layerH) * (1 - overlapFraction), 0);
 
-    const topLeftScreen = toScreen(bbox.x, bbox.y);
-    const bottomRightScreen = toScreen(bbox.x + bbox.width, bbox.y + bbox.height);
+    let clampedTx = proposedTx;
+    let clampedTy = proposedTy;
 
-    const contentLeft = Math.min(topLeftScreen.x, bottomRightScreen.x);
-    const contentTop = Math.min(topLeftScreen.y, bottomRightScreen.y);
-    const contentRight = Math.max(topLeftScreen.x, bottomRightScreen.x);
-    const contentBottom = Math.max(topLeftScreen.y, bottomRightScreen.y);
+    if (layerW > view.width) {
+      clampedTx = Math.min(maxTxLarge, Math.max(minTxLarge, proposedTx));
+    } else {
+      const centerTx = (view.width - layerW) / 2 - bbox.x * proposedScale;
+      const minTxSmall = centerTx - allowedExtraX / 2;
+      const maxTxSmall = centerTx + allowedExtraX / 2;
+      clampedTx = Math.min(maxTxSmall, Math.max(minTxSmall, proposedTx));
+    }
 
-    const viewW = rect.width;
-    const viewH = rect.height;
+    if (layerH > view.height) {
+      clampedTy = Math.min(maxTyLarge, Math.max(minTyLarge, proposedTy));
+    } else {
+      const centerTy = (view.height - layerH) / 2 - bbox.y * proposedScale;
+      const minTySmall = centerTy - allowedExtraY / 2;
+      const maxTySmall = centerTy + allowedExtraY / 2;
+      clampedTy = Math.min(maxTySmall, Math.max(minTySmall, proposedTy));
+    }
 
-    let adjustX = 0;
-    if (contentLeft > marginPx) adjustX = marginPx - contentLeft;
-    else if (contentRight < viewW - marginPx) adjustX = (viewW - marginPx) - contentRight;
-
-    let adjustY = 0;
-    if (contentTop > marginPx) adjustY = marginPx - contentTop;
-    else if (contentBottom < viewH - marginPx) adjustY = (viewH - marginPx) - contentBottom;
-
-    if (adjustX === 0 && adjustY === 0) return { tx: proposedTx, ty: proposedTy };
-
-    // Convert pixel adjustments back to SVG-space tx/ty deltas
-    const sampleA = svg.createSVGPoint(); sampleA.x = bbox.x; sampleA.y = bbox.y;
-    const sampleB = svg.createSVGPoint(); sampleB.x = bbox.x + 1; sampleB.y = bbox.y + 1;
-    const sA = sampleA.matrixTransform(svg.getScreenCTM());
-    const sB = sampleB.matrixTransform(svg.getScreenCTM());
-    const svgToScreenScaleX = Math.abs(sB.x - sA.x) || 1;
-    const svgToScreenScaleY = Math.abs(sB.y - sA.y) || 1;
-
-    const pxPerSvgX = svgToScreenScaleX * proposedScale;
-    const pxPerSvgY = svgToScreenScaleY * proposedScale;
-
-    const deltaTxSvg = adjustX / (pxPerSvgX || 1);
-    const deltaTySvg = adjustY / (pxPerSvgY || 1);
-
-    const clampedTx = proposedTx + deltaTxSvg;
-    const clampedTy = proposedTy + deltaTySvg;
-
-    return {
-      tx: Number.isFinite(clampedTx) ? clampedTx : proposedTx,
-      ty: Number.isFinite(clampedTy) ? clampedTy : proposedTy
-    };
+    return { tx: clampedTx, ty: clampedTy };
   }
 
-  // Apply transform always via this function (single place)
   function applyTransform() {
     const clamped = clampTranslation(tx, ty, scale);
     tx = clamped.tx;
@@ -1093,10 +1044,9 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     zoomLayer.setAttribute('transform', `translate(${tx},${ty}) scale(${scale})`);
   }
 
-  // Zoom keeping the point under cursor fixed; clamp immediately
-  function zoomAt(newScale, clientX, clientY) {
+  function zoomAt(newScale, cx, cy) {
     const pt = svg.createSVGPoint();
-    pt.x = clientX; pt.y = clientY;
+    pt.x = cx; pt.y = cy;
     const svgP = pt.matrixTransform(svg.getScreenCTM().inverse());
 
     const localX = (svgP.x - tx) / scale;
@@ -1105,43 +1055,39 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     const newTx = svgP.x - newScale * localX;
     const newTy = svgP.y - newScale * localY;
 
-    scale = Math.min(3, Math.max(0.25, newScale));
-    const clamped = clampTranslation(newTx, newTy, scale);
-    tx = clamped.tx;
-    ty = clamped.ty;
+    scale = newScale;
+    tx = newTx;
+    ty = newTy;
+
     applyTransform();
   }
 
-  // Named handlers so we can remove them later and avoid duplicates
-  function onWheel(ev) {
+  svg.addEventListener('wheel', (ev) => {
     ev.preventDefault();
     const delta = -ev.deltaY;
     const factor = delta > 0 ? 1.08 : 0.92;
-    const newScale = +(scale * factor).toFixed(3);
+    const newScale = Math.min(3, Math.max(0.25, +(scale * factor).toFixed(3)));
     zoomAt(newScale, ev.clientX, ev.clientY);
-  }
+  }, { passive: false });
 
-  function onPointerDown(ev) {
-    if (typeof pointerIsOnNode === 'function' && pointerIsOnNode(ev)) return;
-    // only primary pointer and left button start panning
-    if (ev.button !== 0 || !ev.isPrimary) return;
+  svg.addEventListener('pointerdown', (ev) => {
+    if (pointerIsOnNode(ev)) return;
+    if (ev.button !== 0) return;
     isPanning = true;
     activePointerId = ev.pointerId;
     startX = ev.clientX;
     startY = ev.clientY;
     try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
     svg.style.cursor = 'grabbing';
-  }
+  });
 
-  function onPointerMove(ev) {
-    // only respond to the active primary pointer
-    if (!isPanning || ev.pointerId !== activePointerId || !ev.isPrimary) return;
+  window.addEventListener('pointermove', (ev) => {
+    if (!isPanning || ev.pointerId !== activePointerId) return;
     const dxScreen = ev.clientX - startX;
     const dyScreen = ev.clientY - startY;
     startX = ev.clientX;
     startY = ev.clientY;
 
-    // convert screen delta to svg delta
     const p0 = svg.createSVGPoint(); p0.x = 0; p0.y = 0;
     const p1 = svg.createSVGPoint(); p1.x = dxScreen; p1.y = dyScreen;
     const svg0 = p0.matrixTransform(svg.getScreenCTM().inverse());
@@ -1152,88 +1098,63 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     tx += dxSvg;
     ty += dySvg;
     applyTransform();
-  }
+  });
 
-  function onPointerUp(ev) {
-    if (ev.pointerId !== activePointerId) return;
+  window.addEventListener('pointerup', (ev) => {
+    if (!isPanning || ev.pointerId !== activePointerId) return;
     isPanning = false;
-    try { svg.releasePointerCapture(ev.pointerId); } catch (e) {}
     activePointerId = null;
+    try { svg.releasePointerCapture(ev.pointerId); } catch (e) {}
     svg.style.cursor = 'grab';
-  }
-
-  // Attach listeners and keep references for teardown
-  svg.addEventListener('wheel', onWheel, { passive: false });
-  svg.addEventListener('pointerdown', onPointerDown);
-  window.addEventListener('pointermove', onPointerMove);
-  window.addEventListener('pointerup', onPointerUp);
-
-  containerEl._graphZoomHandles = { onWheel, onPointerDown, onPointerMove, onPointerUp };
-
-  // Proper teardown that removes listeners and clears install flag
-  containerEl._teardownGraphZoom = () => {
-    try {
-      svg.removeEventListener('wheel', onWheel, { passive: false });
-      svg.removeEventListener('pointerdown', onPointerDown);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-    } catch (e) { /* ignore */ }
-    containerEl._graphZoomInstalled = false;
-    containerEl._graphZoomHandles = null;
-    containerEl._teardownGraphZoom = null;
-  };
+  });
 
   svg.style.cursor = 'grab';
 
-  // Robust auto-fit: retry until bbox/view valid, then center and fit
   function computeAutoFit() {
-    const MAX_ATTEMPTS = 12;
-    const RETRY_DELAY_MS = 50;
-    let attempts = 0;
-
-    function tryFit() {
-      attempts++;
-      const bbox = getContentBBox();
-      const view = getViewSizeInSvgCoords();
-      const bboxValid = bbox && bbox.width > 1 && bbox.height > 1;
-      const viewValid = view && view.width > 1 && view.height > 1;
-
-      if (!bboxValid || !viewValid) {
-        if (attempts < MAX_ATTEMPTS) {
-          setTimeout(() => requestAnimationFrame(tryFit), RETRY_DELAY_MS);
-          return;
-        } else {
-          scale = 1; tx = 0; ty = 0; applyTransform(); return;
-        }
-      }
-
-      const pad = 0.92;
-      const scaleX = (view.width * pad) / bbox.width;
-      const scaleY = (view.height * pad) / bbox.height;
-      const fitScale = Math.min(scaleX, scaleY);
-
-      scale = Math.min(3, Math.max(0.25, fitScale));
-      const layerW = bbox.width * scale;
-      const layerH = bbox.height * scale;
-
-      tx = (view.width - layerW) / 2 - bbox.x * scale;
-      ty = (view.height - layerH) / 2 - bbox.y * scale;
-
-      applyTransform();
+    const bbox = getContentBBox();
+    const view = getViewSizeInSvgCoords();
+    if (bbox.width === 0 || bbox.height === 0) {
+      scale = 1; tx = 0; ty = 0; applyTransform(); return;
     }
 
-    requestAnimationFrame(tryFit);
+    const pad = 0.92;
+    const scaleX = (view.width * pad) / bbox.width;
+    const scaleY = (view.height * pad) / bbox.height;
+    const fitScale = Math.min(scaleX, scaleY);
+
+    scale = Math.min(3, Math.max(0.25, fitScale));
+
+    const layerW = bbox.width * scale;
+    const layerH = bbox.height * scale;
+    tx = (view.width - layerW) / 2 - bbox.x * scale;
+    ty = (view.height - layerH) / 2 - bbox.y * scale;
+
+    applyTransform();
   }
 
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
       computeAutoFit();
-      if (typeof showToast === 'function') showToast("View reset");
+      showToast("View reset");
     });
   }
 
   if (autoFit) requestAnimationFrame(() => computeAutoFit());
   else applyTransform();
+
+  containerEl._teardownGraphZoom = () => { /* no-op */ };
+
+  function getContentBBox() {
+    try { return zoomLayer.getBBox(); } catch (e) { return { x: 0, y: 0, width: svg.clientWidth, height: svg.clientHeight }; }
+  }
+  function getViewSizeInSvgCoords() {
+    const rect = svg.getBoundingClientRect();
+    const ptTL = svg.createSVGPoint(); ptTL.x = 0; ptTL.y = 0;
+    const ptBR = svg.createSVGPoint(); ptBR.x = rect.width; ptBR.y = rect.height;
+    const svgTL = ptTL.matrixTransform(svg.getScreenCTM().inverse());
+    const svgBR = ptBR.matrixTransform(svg.getScreenCTM().inverse());
+    return { width: svgBR.x - svgTL.x, height: svgBR.y - svgTL.y };
+  }
 }
 
 /* ===============================
