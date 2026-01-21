@@ -763,11 +763,10 @@ function buildGraphData(chain, rootItem) {
   return { nodes, links };
 }
 
-// Full renderGraph implementation
-// - Draws direct node->node center lines for allowed raw links:
-//   source must be raw and in far-left column (minDepth), destination must be in minDepth or minDepth+1.
-// - Does NOT draw helper dot/left anchor for raw nodes in the far-left column.
-// - Keeps helper dots/anchors for non-raw nodes, spines, bypass connectors, and node visuals.
+// Updated renderGraph: draws direct center→center lines for raw→consumer links,
+// and also handles the common case where the link is reversed in the data
+// (consumer -> raw) by flipping it so a visible raw->consumer center line is emitted.
+// Also ensures no left helper/anchor is created for raw nodes in the far-left column.
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
   const ANCHOR_RADIUS = 5;
@@ -825,7 +824,7 @@ function renderGraph(nodes, links, rootItem) {
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
     const rawRightOnly = !!(node.raw && node.depth !== minDepth);
 
-    // Do NOT render left helper/anchor for raw nodes that sit in the far-left column
+    // DO NOT render left helper/anchor for raw nodes that sit in the far-left column
     if (node.hasInputAnchor && !isSmelter && !isBBM && !(node.raw && node.depth === minDepth)) {
       willRenderAnchors.push({ side:'left', node, pos: anchorLeftPos(node) });
     }
@@ -935,18 +934,30 @@ function renderGraph(nodes, links, rootItem) {
     ${spineSvg}
   `;
 
-  // --- Direct node-to-node center lines (restricted) ---
+  // --- Direct node-to-node center lines (restricted, with reversed-link handling) ---
   (function emitDirectNodeLines() {
     const lineColor = isDarkMode() ? '#dcdcdc' : '#444444';
     const rawLineColor = '#333333';
-    for (const link of links || []) {
-      const src = nodeById.get(link.from);
-      const dst = nodeById.get(link.to);
-      if (!src || !dst) continue;
 
-      // Only draw when source is raw in far-left column and destination is in minDepth or minDepth+1
-      if (!src.raw) continue;
-      if (src.depth !== minDepth) continue;
+    for (const link of links || []) {
+      const a = nodeById.get(link.from);
+      const b = nodeById.get(link.to);
+      if (!a || !b) continue;
+
+      // Determine which side is raw. Prefer the explicit raw source (a.raw).
+      // If the link is reversed in data (consumer -> raw), flip it so we draw raw->consumer.
+      let src = null, dst = null;
+      if (a.raw && a.depth === minDepth) {
+        src = a; dst = b;
+      } else if (b.raw && b.depth === minDepth) {
+        // flipped link in data: treat b as source and a as destination
+        src = b; dst = a;
+      } else {
+        // neither endpoint qualifies as a raw in the far-left column; skip
+        continue;
+      }
+
+      // Destination must be in minDepth or minDepth+1 to be eligible
       if (!(dst.depth === minDepth || dst.depth === (minDepth + 1))) continue;
 
       const x1 = roundCoord(src.x);
