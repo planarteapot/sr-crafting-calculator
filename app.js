@@ -871,7 +871,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Helper → Helper (vertical, centered arrow, offset upward)
+  // Helper → Helper (vertical ONLY: Wolfram Bar → Titanium Bar)
   {
     const wolfram = nodes.find(n => n.id === 'Wolfram Bar');
     const titanium = nodes.find(n => n.id === 'Titanium Bar');
@@ -881,24 +881,30 @@ function renderGraph(nodes, links, rootItem) {
       const b = anchorRightPos(titanium);
 
       const x = a.x;
-      const yTop = Math.min(a.y, b.y);
-      const yBottom = Math.max(a.y, b.y);
+      const y1 = Math.min(a.y, b.y);
+      const y2 = Math.max(a.y, b.y);
 
-      // Push arrow ABOVE true center to avoid label collision
-      const arrowOffset = 18;
-      const arrowY = roundCoord(((yTop + yBottom) / 2) - arrowOffset);
+      // vertical line
+      inner += `
+        <line
+          x1="${x}" y1="${y1}"
+          x2="${x}" y2="${y2}"
+          stroke="${defaultLineColor}"
+          stroke-width="1.6" />
+      `;
+
+      // centered UP arrow (manual, guaranteed)
+      const midY = (y1 + y2) / 2 - 10; // offset upward to avoid labels
+      const size = 6;
 
       inner += `
         <path
           d="
-            M ${x} ${yBottom}
-            L ${x} ${arrowY}
-            L ${x} ${yTop}
-          "
-          fill="none"
-          stroke="${defaultLineColor}"
-          stroke-width="1.6"
-          marker-mid="url(#arrow-up-mid)" />
+            M ${x - size} ${midY + size}
+            L ${x}        ${midY}
+            L ${x + size} ${midY + size}
+            Z"
+          fill="${defaultLineColor}" />
       `;
     }
   }
