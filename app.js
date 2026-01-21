@@ -770,19 +770,17 @@ function buildGraphData(chain, rootItem) {
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
   const ANCHOR_RADIUS = 5;
-  const ANCHOR_HIT_RADIUS = 12;
   const ANCHOR_OFFSET = 18;
 
-  const OUTPUT_ARROW_SIZE = 6;
-  const OUTPUT_ARROW_OFFSET_Y = -10;
-
   function roundCoord(v) { return Math.round(v * 100) / 100; }
+
   function anchorRightPos(node) {
     return {
       x: roundCoord(node.x + nodeRadius + ANCHOR_OFFSET),
       y: roundCoord(node.y)
     };
   }
+
   function anchorLeftPos(node) {
     return {
       x: roundCoord(node.x - nodeRadius - ANCHOR_OFFSET),
@@ -799,7 +797,7 @@ function renderGraph(nodes, links, rootItem) {
   }
 
   // Normalize depths
-  const uniqueDepths = Array.from(new Set(nodes.map(n => Number(n.depth) || 0))).sort((a,b)=>a-b);
+  const uniqueDepths = [...new Set(nodes.map(n => Number(n.depth) || 0))].sort((a,b)=>a-b);
   const depthMap = new Map(uniqueDepths.map((d,i)=>[d,i]));
   nodes.forEach(n => n.depth = depthMap.get(Number(n.depth)) ?? 0);
 
@@ -821,7 +819,7 @@ function renderGraph(nodes, links, rootItem) {
     });
   }
 
-  // ViewBox calc
+  // ViewBox
   const xs = nodes.map(n=>n.x), ys = nodes.map(n=>n.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs);
   const minY = Math.min(...ys), maxY = Math.max(...ys);
@@ -831,12 +829,30 @@ function renderGraph(nodes, links, rootItem) {
   const contentW = (maxX - minX) + nodeRadius*2 + GRAPH_CONTENT_PAD*2;
   const contentH = (maxY - minY) + nodeRadius*2 + GRAPH_CONTENT_PAD*2;
 
-  let inner = '';
-  const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444444';
+  const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444';
 
-  // -------------------------------
-  // Collect RIGHT helper anchors
-  // -------------------------------
+  let inner = '';
+
+  // ---------------------------------
+  // SVG DEFS (arrow marker)
+  // ---------------------------------
+  inner += `
+    <defs>
+      <marker id="arrowUp"
+        markerWidth="8"
+        markerHeight="8"
+        refX="4"
+        refY="4"
+        orient="auto"
+        markerUnits="userSpaceOnUse">
+        <path d="M0,8 L4,0 L8,8 Z" fill="${defaultLineColor}" />
+      </marker>
+    </defs>
+  `;
+
+  // ---------------------------------
+  // Node → Helper lines + helpers
+  // ---------------------------------
   const rightHelpers = [];
 
   for (const node of nodes) {
@@ -853,98 +869,85 @@ function renderGraph(nodes, links, rootItem) {
       rightHelpers.push(a);
 
       inner += `
-        <line
-          x1="${roundCoord(node.x + nodeRadius)}"
-          y1="${node.y}"
-          x2="${a.x}"
-          y2="${a.y}"
-          stroke="${defaultLineColor}"
-          stroke-width="1.2" />
-        <g transform="translate(${a.x},${a.y})">
-          <circle r="${ANCHOR_RADIUS}"
-            fill="var(--bypass-fill)"
-            stroke="var(--bypass-stroke)"
-            stroke-width="1.2"/>
-        </g>
+        <line x1="${node.x + nodeRadius}" y1="${node.y}"
+              x2="${a.x}" y2="${a.y}"
+              stroke="${defaultLineColor}" stroke-width="1.2" />
+        <circle cx="${a.x}" cy="${a.y}"
+                r="${ANCHOR_RADIUS}"
+                fill="var(--bypass-fill)"
+                stroke="var(--bypass-stroke)"
+                stroke-width="1.2"/>
       `;
     }
 
     if (node.hasInputAnchor && !isSmelter && !isBBM && !node.raw) {
       const a = anchorLeftPos(node);
       inner += `
-        <line
-          x1="${roundCoord(node.x - nodeRadius)}"
-          y1="${node.y}"
-          x2="${a.x}"
-          y2="${a.y}"
-          stroke="${defaultLineColor}"
-          stroke-width="1.2" />
-        <g transform="translate(${a.x},${a.y})">
-          <circle r="${ANCHOR_RADIUS}"
-            fill="var(--bypass-fill)"
-            stroke="var(--bypass-stroke)"
-            stroke-width="1.2"/>
-        </g>
+        <line x1="${node.x - nodeRadius}" y1="${node.y}"
+              x2="${a.x}" y2="${a.y}"
+              stroke="${defaultLineColor}" stroke-width="1.2" />
+        <circle cx="${a.x}" cy="${a.y}"
+                r="${ANCHOR_RADIUS}"
+                fill="var(--bypass-fill)"
+                stroke="var(--bypass-stroke)"
+                stroke-width="1.2"/>
       `;
     }
   }
 
-  // -------------------------------
-  // OUTPUT SPINES (per-segment)
-  // -------------------------------
+  // ---------------------------------
+  // OUTPUT SPINES (per segment + arrow)
+  // ---------------------------------
   const byX = {};
   for (const h of rightHelpers) {
-    const key = h.x;
-    if (!byX[key]) byX[key] = [];
-    byX[key].push(h);
+    if (!byX[h.x]) byX[h.x] = [];
+    byX[h.x].push(h);
   }
 
-  for (const [x, helpers] of Object.entries(byX)) {
+  for (const helpers of Object.values(byX)) {
     if (helpers.length < 2) continue;
-
-    // sort top → bottom
-    helpers.sort((a, b) => a.y - b.y);
+    helpers.sort((a,b)=>a.y - b.y);
 
     for (let i = 0; i < helpers.length - 1; i++) {
-      const y1 = helpers[i].y;
-      const y2 = helpers[i + 1].y;
-
-      // draw ONLY this segment
       inner += `
         <line
-          x1="${x}" y1="${y1}"
-          x2="${x}" y2="${y2}"
+          x1="${helpers[i].x}" y1="${helpers[i].y}"
+          x2="${helpers[i+1].x}" y2="${helpers[i+1].y}"
           stroke="${defaultLineColor}"
-          stroke-width="1.6" />
-      `;
-
-      // arrow centered on THIS segment
-      const midY = (y1 + y2) / 2 - 10; // lift to avoid labels
-
-      inner += `
-        <polygon
-          points="
-            ${x},${midY - 6}
-            ${x - 6},${midY + 6}
-            ${x + 6},${midY + 6}
-          "
-          fill="${defaultLineColor}" />
+          stroke-width="1.6"
+          marker-mid="url(#arrowUp)" />
       `;
     }
   }
 
-  // -------------------------------
-  // Nodes
-  // -------------------------------
+  // ---------------------------------
+  // Nodes (LAST → fixes blur box)
+  // ---------------------------------
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const label = String(node.label || node.id);
 
+    const fontSize = 13;
+    const padX = 10, padY = 6;
+    const width = Math.max(48, label.length * 7 + padX*2);
+    const height = fontSize + padY*2;
+
     inner += `
       <g>
-        <text x="${node.x}" y="${node.y - 36}"
+        <rect
+          x="${node.x - width/2}"
+          y="${node.y - 36 - height/2}"
+          width="${width}"
+          height="${height}"
+          rx="6"
+          fill="var(--label-box-fill)"
+          stroke="var(--label-box-stroke)" />
+        <text
+          x="${node.x}"
+          y="${node.y - 36}"
           text-anchor="middle"
-          font-size="13"
+          dominant-baseline="middle"
+          font-size="${fontSize}"
           font-weight="700"
           fill="var(--label-text-fill)">
           ${label}
