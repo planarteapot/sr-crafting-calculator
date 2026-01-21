@@ -491,15 +491,30 @@ function renderGraph(nodes, links, rootItem) {
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
+  // Group nodes by depth, compute sorted depths, and lay out nodes with uniform column spacing
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
-  for (const [depth, colNodes] of Object.entries(columns)) {
-    colNodes.sort((a,b) => (String(a.label||a.id)).localeCompare(String(b.label||b.id), undefined, {sensitivity:'base'}));
-    colNodes.forEach((node,i) => {
-      node.x = roundCoord(Number(depth) * MACHINE_COL_WIDTH + 100);
+
+  // Get a sorted list of populated depths (ensures deterministic order)
+  const depthsSorted = Object.keys(columns).map(Number).sort((a, b) => a - b);
+
+  // Map each depth to a consecutive column index (0..N-1)
+  const depthToIndex = new Map();
+  depthsSorted.forEach((d, idx) => depthToIndex.set(d, idx));
+
+  // Place nodes: use the depth index for X so empty depth numbers don't create gaps
+  for (const depth of depthsSorted) {
+    const colNodes = columns[depth] || [];
+    colNodes.sort((a, b) =>
+      String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: 'base' })
+    );
+
+    const colIndex = depthToIndex.get(Number(depth));
+    colNodes.forEach((node, i) => {
+      node.x = roundCoord(colIndex * MACHINE_COL_WIDTH + 100);
       node.y = roundCoord(i * GRAPH_ROW_HEIGHT + 100);
     });
   }
