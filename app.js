@@ -496,10 +496,17 @@ function renderGraph(nodes, links, rootItem) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
+  // Layout columns by the sorted order of populated depths (guaranteed consecutive columns)
+  const _depthsOrdered = Object.keys(columns).map(Number).sort((a,b)=>a-b);
+  const _depthIndex = new Map(_depthsOrdered.map((d,i)=>[d,i]));
+
   for (const [depth, colNodes] of Object.entries(columns)) {
-    colNodes.sort((a,b) => (String(a.label||a.id)).localeCompare(String(b.label||b.id), undefined, {sensitivity:'base'}));
-    colNodes.forEach((node,i) => {
-      node.x = roundCoord(Number(depth) * MACHINE_COL_WIDTH + 100);
+    colNodes.sort((a,b) =>
+      String(a.label || a.id).localeCompare(String(b.label || b.id), undefined, { sensitivity: 'base' })
+    );
+    const idx = _depthIndex.get(Number(depth)) ?? 0;
+    colNodes.forEach((node, i) => {
+      node.x = roundCoord(idx * MACHINE_COL_WIDTH + 100);
       node.y = roundCoord(i * GRAPH_ROW_HEIGHT + 100);
     });
   }
