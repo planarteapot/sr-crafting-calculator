@@ -558,6 +558,7 @@ function renderGraph(nodes, links, rootItem) {
   window._needsOutputBypass = needsOutputBypass;
   window._needsInputBypass = needsInputBypass;
   window._graphNodes = nodes;
+  window._graphLinks = links;
 
   let spineSvg = '';
   (function buildSpines(){
@@ -607,22 +608,55 @@ function renderGraph(nodes, links, rootItem) {
     ${spineSvg}
   `;
 
+  // --- Render all logical edges (node-to-node) with data attributes ---
   for (const link of links) {
-    const rawSource = nodeById.get(link.to);
-    const consumer = nodeById.get(link.from);
-    if (!rawSource || !consumer) continue;
-    const consumerIsBBM = (consumer.id === BBM_ID || consumer.label === BBM_ID);
-    if (rawSource.raw && rawSource.depth === minDepth && (consumer.building === 'Smelter' || consumerIsBBM)) {
-      inner += `<line class="graph-edge graph-edge-raw" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}" x1="${rawSource.x}" y1="${rawSource.y}" x2="${consumer.x}" y2="${consumer.y}" />`;
+    const src = nodeById.get(link.from);
+    const dst = nodeById.get(link.to);
+    if (!src || !dst) continue;
+
+    // Raw source feeding a smelter/BBM at minDepth -> raw edge styling
+    if (src.raw && src.depth === minDepth && (dst.building === 'Smelter' || dst.id === BBM_ID)) {
+      inner += `<line class="graph-edge graph-edge-raw" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${src.x}" y1="${src.y}" x2="${dst.x}" y2="${dst.y}" />`;
+    } else {
+      // Default logical edge (node-to-node)
+      inner += `<line class="graph-edge" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${src.x}" y1="${src.y}" x2="${dst.x}" y2="${dst.y}" />`;
     }
   }
 
+  // --- Render node-to-helper short connectors and helper dots ---
+  const helperMap = new Map(); // key: `${node.id}:right` or `${node.id}:left` -> {x,y}
+  for (const node of nodes) {
+    const hideAllAnchors = (node.raw && node.depth === minDepth);
+    const isSmelter = (node.building === 'Smelter');
+    const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
+    const rawRightOnly = !!(node.raw && node.depth !== minDepth);
+
+    // right helper (output)
+    if (!hideAllAnchors && (node.hasOutputAnchor || rawRightOnly || isBBM) && node.depth !== maxDepth) {
+      const a = anchorRightPos(node);
+      helperMap.set(`${node.id}:right`, a);
+      inner += `<line class="node-to-helper" data-node="${escapeHtml(node.id)}" data-side="right" x1="${roundCoord(node.x + nodeRadius)}" y1="${node.y}" x2="${a.x}" y2="${a.y}" />`;
+      inner += `<g class="helper-dot helper-output" data-node="${escapeHtml(node.id)}" data-side="right" transform="translate(${a.x},${a.y})" aria-hidden="true"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
+    }
+
+    // left helper (input)
+    if (!hideAllAnchors && !rawRightOnly && node.hasInputAnchor && !isSmelter && !isBBM) {
+      const a = anchorLeftPos(node);
+      helperMap.set(`${node.id}:left`, a);
+      inner += `<line class="node-to-helper" data-node="${escapeHtml(node.id)}" data-side="left" x1="${roundCoord(node.x - nodeRadius)}" y1="${node.y}" x2="${a.x}" y2="${a.y}" />`;
+      inner += `<g class="helper-dot helper-input" data-node="${escapeHtml(node.id)}" data-side="left" transform="translate(${a.x},${a.y})" aria-hidden="true"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
+    }
+  }
+
+  // --- Render output-to-spine short connectors (bypass-to-spine) ---
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-output-connector" data-depth="${depth}" x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.helperCenter.y}" />`;
   }
   for (const [consumerDepth, pos] of needsInputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-input-connector" data-depth="${consumerDepth}" x1="${pos.x}" y1="${pos.helperCenter.y}" x2="${pos.x}" y2="${pos.y}" />`;
   }
+
+  // --- Render bypass connectors between output helper and input helper for cross-column routing ---
   for (const [outDepth, outInfo] of needsOutputBypass.entries()) {
     for (const consumerDepth of outInfo.causingConsumers) {
       const inPos = needsInputBypass.get(consumerDepth);
@@ -631,24 +665,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  for (const node of nodes) {
-    const hideAllAnchors = (node.raw && node.depth === minDepth);
-    const isSmelter = (node.building === 'Smelter');
-    const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
-    const rawRightOnly = !!(node.raw && node.depth !== minDepth);
-    const showLeftAnchor = !hideAllAnchors && !rawRightOnly && node.hasInputAnchor && !isSmelter && !isBBM;
-    const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || rawRightOnly || isBBM) && (node.depth !== maxDepth);
-
-    if (showLeftAnchor) {
-      const a = anchorLeftPos(node);
-      inner += `<line class="node-to-anchor node-to-left" data-node="${escapeHtml(node.id)}" x1="${roundCoord(node.x - nodeRadius)}" y1="${node.y}" x2="${a.x}" y2="${a.y}" />`;
-    }
-    if (showRightAnchor) {
-      const a = anchorRightPos(node);
-      inner += `<line class="node-to-anchor node-to-right" data-node="${escapeHtml(node.id)}" x1="${roundCoord(node.x + nodeRadius)}" y1="${node.y}" x2="${a.x}" y2="${a.y}" />`;
-    }
-  }
-
+  // --- Node markup (labels, circles, numbers, anchors) ---
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
@@ -690,11 +707,12 @@ function renderGraph(nodes, links, rootItem) {
     inner += `</g>`;
   }
 
+  // --- Render bypass helper dots (visual redundancy with helper-dot above is fine) ---
   for (const [depth, info] of needsOutputBypass.entries()) {
-    inner += `<g class="bypass-dot bypass-output" data-depth="${depth}" transform="translate(${info.x},${info.y})" aria-hidden="false"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
+    inner += `<g class="bypass-dot bypass-output" data-depth="${depth}" transform="translate(${info.x},${info.y})" aria-hidden="true"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
   }
   for (const [consumerDepth, pos] of needsInputBypass.entries()) {
-    inner += `<g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="false"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
+    inner += `<g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="true"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
   }
 
   const dark = !!(typeof isDarkMode === 'function' ? isDarkMode() : false);
