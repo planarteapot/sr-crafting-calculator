@@ -928,6 +928,7 @@ function renderGraph(nodes, links, rootItem) {
       `;
 
       // arrow — short vertical segment, centered & lifted
+      const midY = (y1 + y2) / 2;
       const arrowY = midY + ARROW_VISUAL_OFFSET;
 
       inner += `
@@ -972,6 +973,7 @@ function renderGraph(nodes, links, rootItem) {
       `;
 
       // arrow — SAME OFFSET MAGNITUDE as output, inverted direction
+      const midY = (y1 + y2) / 2;
       const arrowY = midY - ARROW_VISUAL_OFFSET;
 
       inner += `
