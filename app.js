@@ -557,46 +557,35 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   }
 
   function clampTranslation(proposedTx, proposedTy, proposedScale) {
-    const bbox = getContentBBox();
-    const view = getViewSizeInSvgCoords();
-    const layerW = bbox.width * proposedScale;
-    const layerH = bbox.height * proposedScale;
+    const bbox = getContentBBox();           // content in SVG coords
+    const view = getViewSizeInSvgCoords();   // viewport in SVG coords
 
-    // small buffer in SVG coords
-    const marginSvgY = Math.max(8, view.height * 0.03);
+    const buffer = Math.max(16, Math.min(view.width, view.height) * 0.04);
 
-    const minTxLarge = view.width - layerW - bbox.x * proposedScale;
-    const maxTxLarge = -bbox.x * proposedScale;
-    // Correct vertical bounds: use content bottom explicitly and add a small margin
-    const minTyLarge = view.height - (bbox.y + bbox.height) * proposedScale - marginSvgY;
-    const maxTyLarge = -bbox.y * proposedScale + marginSvgY;
+    // Scaled content bounds
+    const left   = (bbox.x * proposedScale) + proposedTx;
+    const right  = (bbox.x + bbox.width) * proposedScale + proposedTx;
+    const top    = (bbox.y * proposedScale) + proposedTy;
+    const bottom = (bbox.y + bbox.height) * proposedScale + proposedTy;
 
-    const overlapFraction = 0.12;
-    const allowedExtraX = Math.max((view.width - layerW) * (1 - overlapFraction), 0);
-    const allowedExtraY = Math.max((view.height - layerH) * (1 - overlapFraction), 0);
+    let tx = proposedTx;
+    let ty = proposedTy;
 
-    let clampedTx = proposedTx;
-    let clampedTy = proposedTy;
-
-    if (layerW > view.width) {
-      clampedTx = Math.min(maxTxLarge, Math.max(minTxLarge, proposedTx));
-    } else {
-      const centerTx = (view.width - layerW) / 2 - bbox.x * proposedScale;
-      const minTxSmall = centerTx - allowedExtraX / 2;
-      const maxTxSmall = centerTx + allowedExtraX / 2;
-      clampedTx = Math.min(maxTxSmall, Math.max(minTxSmall, proposedTx));
+    // Horizontal clamping
+    if (right < buffer) {
+      tx += buffer - right;
+    } else if (left > view.width - buffer) {
+      tx -= left - (view.width - buffer);
     }
 
-    if (layerH > view.height) {
-      clampedTy = Math.min(maxTyLarge, Math.max(minTyLarge, proposedTy));
-    } else {
-      const centerTy = (view.height - layerH) / 2 - bbox.y * proposedScale;
-      const minTySmall = centerTy - allowedExtraY / 2 - marginSvgY;
-      const maxTySmall = centerTy + allowedExtraY / 2 + marginSvgY;
-      clampedTy = Math.min(maxTySmall, Math.max(minTySmall, proposedTy));
+    // Vertical clamping
+    if (bottom < buffer) {
+      ty += buffer - bottom;
+    } else if (top > view.height - buffer) {
+      ty -= top - (view.height - buffer);
     }
 
-    return { tx: clampedTx, ty: clampedTy };
+    return { tx, ty };
   }
 
   function applyTransform() {
