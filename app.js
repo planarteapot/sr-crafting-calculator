@@ -343,14 +343,14 @@ function expandChain(item, targetRate) {
 function computeDepthsFromTiers(chain, rootItem) {
   const depths = {};
 
-  // 1) Base assignment: table level + 1 (so table level 0 -> graph column 1)
-  for (const item of Object.keys(chain)) {
+  // 1) Base assignment: use table level directly (no +1 offset)
+  for (const item of Object.keys(chain || {})) {
     const tableLevel = Number(TIERS?.[item] ?? 0);
-    depths[item] = tableLevel + 1;
+    depths[item] = Number.isFinite(tableLevel) ? tableLevel : 0;
   }
 
   // 2) Ensure raw items default to column 0 if they don't have a table level
-  for (const item of Object.keys(chain)) {
+  for (const item of Object.keys(chain || {})) {
     if (chain[item].raw) {
       if (FORCED_RAW_ORES.includes(item)) {
         depths[item] = 0;
@@ -360,17 +360,34 @@ function computeDepthsFromTiers(chain, rootItem) {
     }
   }
 
-  // 3) Force BBM into graph column 1
-  if (depths[BBM_ID] !== undefined) depths[BBM_ID] = 1;
+  // 3) Force BBM into graph column 0 (not 1)
+  if (depths[BBM_ID] !== undefined) depths[BBM_ID] = 0;
 
-  // 4) Place Helium-3 and Sulphur one column left of their earliest consumer
+  // 4) Heuristic: if an item has inputs and ALL inputs are raw, treat it as depth 0
+  //    (covers blocks/bars produced directly from ores)
+  for (const [item, data] of Object.entries(chain || {})) {
+    const inputs = data.inputs || {};
+    const inputNames = Object.keys(inputs);
+    if (inputNames.length > 0) {
+      const allInputsRaw = inputNames.every(inName => {
+        const inNode = chain[inName];
+        return !!(inNode && inNode.raw);
+      });
+      if (allInputsRaw) {
+        depths[item] = 0;
+      }
+    }
+  }
+
+  // 5) Place Helium-3 and Sulphur one column left of their earliest consumer
+  //    (adjusted to the new depth mapping)
   for (const rawName of LEFT_OF_CONSUMER_RAWS) {
     if (!(rawName in chain)) continue;
     let minConsumerDepth = Infinity;
-    for (const [consumerName, consumerData] of Object.entries(chain)) {
+    for (const [consumerName, consumerData] of Object.entries(chain || {})) {
       const inputs = consumerData.inputs || {};
       if (Object.prototype.hasOwnProperty.call(inputs, rawName)) {
-        const d = Number(depths[consumerName] ?? (Number(TIERS?.[consumerName] ?? 0) + 1));
+        const d = Number(depths[consumerName] ?? (Number(TIERS?.[consumerName] ?? 0)));
         if (Number.isFinite(d) && d < minConsumerDepth) minConsumerDepth = d;
       }
     }
@@ -381,7 +398,7 @@ function computeDepthsFromTiers(chain, rootItem) {
     }
   }
 
-  // 5) Final clamp and integer normalization
+  // 6) Final clamp and integer normalization
   for (const k of Object.keys(depths)) {
     let v = Number(depths[k]);
     if (!Number.isFinite(v) || isNaN(v)) v = 0;
