@@ -837,6 +837,11 @@ function renderGraph(nodes, links, rootItem) {
       ? BYPASS_Y_OFFSET + BYPASS_RADIUS + 12
       : 0;
 
+      console.log(
+        "Bypass outputs:", [...bypassOutputDepths],
+        "Bypass inputs:", [...bypassInputDepths]
+      );
+
   // ---------------------------------
   // ViewBox
   // ---------------------------------
