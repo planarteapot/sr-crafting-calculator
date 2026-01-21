@@ -786,11 +786,26 @@ function renderGraph(nodes, links, rootItem) {
   }
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
+
+  // Normalize depths so leftmost column is 0 and columns increment by 1 to the right
+  // This remaps any sparse or tier-based depth values into sequential columns.
+  const uniqueDepths = Array.from(new Set(nodes.map(n => Number.isFinite(Number(n.depth)) ? Number(n.depth) : 0)));
+  uniqueDepths.sort((a,b) => a - b);
+  const depthMap = new Map(uniqueDepths.map((d, i) => [d, i])); // oldDepth -> normalizedIndex
+  // Apply normalized depth to nodes
+  nodes.forEach(n => {
+    const old = Number.isFinite(Number(n.depth)) ? Number(n.depth) : 0;
+    n.depth = depthMap.get(old) ?? 0;
+  });
+
+  // Rebuild columns using normalized depths
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
+
+  // Sorted list of normalized depths and index map
   const depthsSorted = Object.keys(columns).map(Number).sort((a,b)=>a-b);
   const _depthIndex = new Map(depthsSorted.map((d,i)=>[d,i]));
 
