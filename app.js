@@ -334,12 +334,14 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /**
- * renderGraph (center-to-center; left/right anchors only)
+ * renderGraph (center-to-center; left/right anchors only; BBM depth=0; smelter input suppressed)
+ *
  * - Uses only left/right anchors (no top anchors)
- * - All vertical connectors are center-to-center: connector endpoints use the exact same
- *   numeric center values used to render the anchor <g> transforms
- * - Connectors are appended before anchor groups so circles visually cover joints
- * - Consistent rounding applied via roundCoord()
+ * - BBM (Basic Building Material) is forced into depth 0
+ * - Smelters do not render input anchors or input-side spines (they connect raw -> node directly)
+ * - Vertical spine lines for outputs are drawn per-column (using output anchor centers)
+ * - All bypass connectors are center-to-center and use identical rounded coordinates
+ * - Connectors drawn before anchor groups; stroke-linecap="butt" to avoid cap artifacts
  *
  * Assumes globals: GRAPH_COL_WIDTH, GRAPH_ROW_HEIGHT, GRAPH_CONTENT_PAD,
  * GRAPH_LABEL_OFFSET, MACHINE_COLORS, isDarkMode(), escapeHtml(), getTextColor()
@@ -351,7 +353,9 @@ function renderGraph(nodes, links, rootItem) {
   const ANCHOR_OFFSET = 18;
   const isDark = isDarkMode();
 
-  // small helper to avoid sub-pixel mismatches
+  const BBM_ID = 'Basic Building Material';
+
+  // rounding helper to avoid sub-pixel mismatches
   function roundCoord(v) { return Math.round(v * 100) / 100; }
 
   // anchor center helpers (left/right only)
@@ -362,57 +366,67 @@ function renderGraph(nodes, links, rootItem) {
   for (const n of nodes) {
     if (typeof n.hasInputAnchor === 'undefined') n.hasInputAnchor = true;
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
+    if (typeof n.depth === 'undefined') n.depth = 0;
   }
+
+  // Force BBM into depth 0 (level 0 column)
+  const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
+  if (bbmNode) bbmNode.depth = 0;
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
-  // layout (simple column/row layout preserved from prior examples)
+  // Group nodes by depth
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
+
+  // Layout nodes: alphabetical top -> bottom in each column (rounded)
   for (const [depth, colNodes] of Object.entries(columns)) {
     colNodes.sort((a, b) => (String(a.label || a.id)).localeCompare(String(b.label || b.id), undefined, { sensitivity: 'base' }));
     colNodes.forEach((node, i) => {
-      node.x = Number(depth) * GRAPH_COL_WIDTH + 100;
-      node.y = i * GRAPH_ROW_HEIGHT + 100;
-      // round node centers too for consistency
-      node.x = roundCoord(node.x);
-      node.y = roundCoord(node.y);
+      node.x = roundCoord(Number(depth) * GRAPH_COL_WIDTH + 100);
+      node.y = roundCoord(i * GRAPH_ROW_HEIGHT + 100);
     });
   }
 
-  // compute bounds for viewBox
+  // Compute bounds
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
   const maxX = nodes.length ? Math.max(...xs) : 0;
   const minY = nodes.length ? Math.min(...ys) : 0;
   const maxY = nodes.length ? Math.max(...ys) : 0;
+
   const contentX = minX - nodeRadius - GRAPH_CONTENT_PAD;
   const contentY = minY - nodeRadius - GRAPH_CONTENT_PAD;
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
-  // determine which anchors will render (left/right)
-  const willRenderAnchors = [];
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
+
+  // Determine which anchors will render (left/right only). Smelters suppress input anchors.
+  const willRenderAnchors = [];
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
-    const isBBM = (node.id === 'Basic Building Material' || node.label === 'Basic Building Material');
+    const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
 
-    if (!hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM) {
+    if (!hideAllAnchors && node.hasInputAnchor && !isSmelter) {
       willRenderAnchors.push({ side: 'left', node, pos: anchorLeftPos(node) });
     }
-    if (!hideAllAnchors && (node.hasOutputAnchor || isBBM) && node.depth !== maxDepth) {
+    if (!hideAllAnchors && (node.hasOutputAnchor || isBBm) && node.depth !== maxDepth) {
+      willRenderAnchors.push({ side: 'right', node, pos: anchorRightPos(node) });
+    }
+    // ensure BBM outputs still render
+    if (!hideAllAnchors && isBBM && node.depth !== maxDepth) {
       willRenderAnchors.push({ side: 'right', node, pos: anchorRightPos(node) });
     }
   }
 
-  // compute shortest positive vertical distance between any two helper centers
+  // Compute shortest positive vertical distance between any two helper centers
   const uniqueYs = Array.from(new Set(willRenderAnchors.map(a => a.pos.y))).sort((a, b) => a - b);
   let shortestGap = nodeRadius + ANCHOR_OFFSET;
   if (uniqueYs.length >= 2) {
@@ -425,14 +439,14 @@ function renderGraph(nodes, links, rootItem) {
   }
   shortestGap = roundCoord(shortestGap);
 
-  // compute output bypass centers per depth using RIGHT anchor centers (center-to-center)
+  // Compute output bypass centers per depth using RIGHT anchor centers (center-to-center)
   const depthsSorted = Object.keys(columns).map(d => Number(d)).sort((a, b) => a - b);
   const needsOutputBypass = new Map(); // depth -> { x, y, helperCenter:{x,y}, causingConsumers:Set }
   for (const depth of depthsSorted) {
     const colNodes = columns[depth] || [];
     const outputs = colNodes.filter(n =>
       !(n.raw && n.depth === minDepth) &&
-      (n.hasOutputAnchor || (n.id === 'Basic Building Material' || n.label === 'Basic Building Material')) &&
+      (n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) &&
       n.depth !== maxDepth
     );
     if (outputs.length === 0) continue;
@@ -463,7 +477,7 @@ function renderGraph(nodes, links, rootItem) {
     });
   }
 
-  // compute input bypass centers (match Y to output bypass center) using LEFT anchor centers
+  // Compute input bypass centers (match Y to output bypass center) using LEFT anchor centers
   const needsInputBypass = new Map(); // consumerDepth -> { x, y, helperCenter:{x,y} }
   for (const [outDepth, info] of needsOutputBypass.entries()) {
     for (const consumerDepth of info.causingConsumers) {
@@ -490,39 +504,70 @@ function renderGraph(nodes, links, rootItem) {
   window._needsOutputBypass = needsOutputBypass;
   window._needsInputBypass = needsInputBypass;
 
-  // build spines (unchanged style)
+  // --- Build spines: vertical output spines per column and horizontal connectors to next column inputs ---
   let spineSvg = '';
   (function buildSpines() {
     for (let i = 0; i < depthsSorted.length; i++) {
       const depth = depthsSorted[i];
       const colNodes = columns[depth] || [];
-      const anchors = [];
+
+      // collect output anchors (right) for this column (exclude smelter inputs)
+      const outputAnchors = [];
       for (const n of colNodes) {
         if (n.raw && n.depth === minDepth) continue;
-        if (n.hasInputAnchor) anchors.push(anchorLeftPos(n));
-        if ((n.hasOutputAnchor || (n.id === 'Basic Building Material' || n.label === 'Basic Building Material')) && n.depth !== maxDepth) anchors.push(anchorRightPos(n));
+        if ((n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && n.depth !== maxDepth) {
+          outputAnchors.push(anchorRightPos(n));
+        }
       }
-      if (anchors.length === 0) continue;
-      const ysAnch = anchors.map(p => p.y);
+      if (outputAnchors.length === 0) continue;
+
+      const ysAnch = outputAnchors.map(p => p.y);
       const topAnchorY = Math.min(...ysAnch);
       const bottomAnchorY = Math.max(...ysAnch);
-      const spineX = anchors[0].x;
+      const spineX = outputAnchors[0].x;
+
+      // vertical spine for outputs in this column
       spineSvg += `
         <line class="graph-spine-vertical" x1="${spineX}" y1="${bottomAnchorY}" x2="${spineX}" y2="${topAnchorY}"
               stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
       `;
+
+      // if next column exists, connect top of this spine to the next column's input anchors (left)
+      if (i + 1 < depthsSorted.length) {
+        const nextDepth = depthsSorted[i + 1];
+        const nextColNodes = columns[nextDepth] || [];
+        const nextInputs = [];
+        for (const n of nextColNodes) {
+          if (n.raw && n.depth === minDepth) continue;
+          // suppress input anchors for smelters (they don't get helper dots)
+          if (n.hasInputAnchor && n.building !== 'Smelter') nextInputs.push(anchorLeftPos(n));
+        }
+        if (nextInputs.length > 0) {
+          const topInY = Math.min(...nextInputs.map(p => p.y));
+          const nextSpineX = nextInputs[0].x;
+          // horizontal from this spine top to next spine X, then vertical down to inputs
+          spineSvg += `
+            <line class="graph-spine-horizontal" x1="${spineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topAnchorY}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+            <line class="graph-spine-horizontal" x1="${nextSpineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topInY}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+            <line class="graph-spine-vertical" x1="${nextSpineX}" y1="${topInY}" x2="${nextSpineX}" y2="${Math.max(...nextInputs.map(p => p.y))}"
+                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+          `;
+        }
+      }
     }
   })();
 
-  // build inner SVG: start with spines so they render behind everything
+  // Build inner SVG: start with spines so they render behind everything
   let inner = spineSvg;
 
-  // raw->smelter edges (unchanged)
+  // Raw->Smelter/BBM node-to-node edges (unchanged)
   for (const link of links) {
     const rawSource = nodeById.get(link.to);
     const consumer = nodeById.get(link.from);
     if (!rawSource || !consumer) continue;
-    const consumerIsBBM = (consumer.id === 'Basic Building Material' || consumer.label === 'Basic Building Material');
+    const consumerIsBBM = (consumer.id === BBM_ID || consumer.label === BBM_ID);
     if (rawSource.raw && rawSource.depth === minDepth && (consumer.building === 'Smelter' || consumerIsBBM)) {
       inner += `
         <line class="graph-edge graph-edge-raw" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}"
@@ -574,7 +619,7 @@ function renderGraph(nodes, links, rootItem) {
 
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
-    const isBBM = (node.id === 'Basic Building Material' || node.label === 'Basic Building Material');
+    const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
 
     const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM;
     const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM) && (node.depth !== maxDepth);
@@ -640,7 +685,7 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-  // final SVG wrapper
+  // Final SVG wrapper
   const viewBoxX = Math.floor(contentX);
   const viewBoxY = Math.floor(contentY);
   const viewBoxW = Math.ceil(contentW);
