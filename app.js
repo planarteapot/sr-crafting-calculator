@@ -253,7 +253,7 @@ async function loadRecipes() {
   if (select) {
     const items = Object.keys(RECIPES).sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const prev = select.value;
-    select.innerHTML = items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
+    select.innerHTML = items.filter(k => !k.startsWith('_')).map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
     if (prev && items.includes(prev)) select.value = prev;
   }
 
@@ -1336,14 +1336,13 @@ async function init() {
   setupDarkMode();
   const data = await loadRecipes();
   RECIPES = data;
-  TIERS = data._iers || {};
+  TIERS = data._tiers || {};
   TIERS["Basic Building Material"] = 0;
 
   const itemSelect = document.getElementById('itemSelect');
   const rateInput = document.getElementById("rateInput");
   const railSelect = document.getElementById("railSelect");
 
-  // ensure placeholder exists
   if (itemSelect) itemSelect.innerHTML = `<option value="" disabled selected>Select Item Here</option>`;
   if (railSelect) railSelect.innerHTML = `
     <option value="120">v1 (120/min)</option>
@@ -1352,14 +1351,8 @@ async function init() {
   `;
   if (rateInput) { rateInput.value = ""; rateInput.dataset.manual = ""; rateInput.placeholder = "Rate (/min)"; }
 
-  // Populate itemSelect with real recipe keys only (exclude internal keys like _tiers)
   if (itemSelect) {
-    const items = Object.keys(RECIPES || {})
-      .filter(k => typeof k === 'string' && !k.startsWith('_'))
-      .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-
-    // Append items (placeholder already set above)
-    items.forEach(item => {
+    Object.keys(RECIPES).filter(k => k !== "_tiers").sort().forEach(item => {
       const option = document.createElement('option');
       option.value = item;
       option.textContent = item;
@@ -1367,6 +1360,7 @@ async function init() {
     });
   }
 
+  // Helper: compute natural/base rate for the currently selected item
   function getNaturalPerMinForSelected() {
     const slug = itemSelect?.value;
     const recipe = RECIPES[slug];
@@ -1374,37 +1368,53 @@ async function init() {
     return Math.round((recipe.output / recipe.time) * 60);
   }
 
+  // --- Rate input: allow full backspacing; revert only on blur/Enter/Escape/item change ---
   if (itemSelect && rateInput) {
+    // When item changes, set rate to natural value only if user hasn't manually set one.
     itemSelect.addEventListener("change", () => {
       const naturalPerMin = getNaturalPerMinForSelected();
       if (!rateInput.dataset.manual) {
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       }
+      // If the field is empty when switching items, ensure it reverts to the new base immediately
       if (rateInput.value.trim() === "") {
         rateInput.dataset.manual = "";
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       }
     });
 
+    // Keep user input intact while typing; mark manual when they type a non-empty numeric value
     rateInput.addEventListener("input", () => {
       const rawVal = rateInput.value;
-      if (rawVal.trim() === "") return;
+      // If user cleared the field, do not auto-revert here — allow them to type
+      if (rawVal.trim() === "") {
+        // leave dataset.manual as-is so we don't overwrite while focused
+        return;
+      }
+      // If they typed a number, mark as manual so item changes won't overwrite it
       const numeric = Number(rawVal);
       if (!Number.isNaN(numeric)) {
         rateInput.dataset.manual = "true";
+      } else {
+        // non-numeric input: keep it so user can correct it; do not revert
       }
     });
 
+    // On blur: if empty, revert to base; otherwise accept value and optionally trigger calculation
     rateInput.addEventListener("blur", () => {
       if (rateInput.value.trim() === "") {
         rateInput.dataset.manual = "";
         const naturalPerMin = getNaturalPerMinForSelected();
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       } else {
+        // user provided a value — mark manual and trigger calc if desired
         rateInput.dataset.manual = "true";
+        // Optionally trigger calculation here:
+        // document.getElementById('calcButton')?.click();
       }
     });
 
+    // On Enter: accept value or revert if empty; Escape reverts immediately
     rateInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         if (rateInput.value.trim() === "") {
@@ -1413,36 +1423,31 @@ async function init() {
           rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
         } else {
           rateInput.dataset.manual = "true";
+          // Optionally trigger calculation here:
+          // document.getElementById('calcButton')?.click();
         }
       } else if (e.key === "Escape") {
         rateInput.dataset.manual = "";
         const naturalPerMin = getNaturalPerMinForSelected();
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
+        // keep focus on input so user can continue typing if desired
         rateInput.focus();
       }
     });
   }
 
+  // Read shared params from URL
   const params = new URLSearchParams(window.location.search);
   const sharedItem = params.get("item");
   const sharedRate = params.get("rate");
   const sharedRail = params.get("rail");
 
-  // If a shared item is present but not in the select options, add it so the value can be set
-  if (sharedItem && itemSelect) {
-    const exists = Array.from(itemSelect.options).some(o => o.value === sharedItem);
-    if (!exists) {
-      const opt = document.createElement('option');
-      opt.value = sharedItem;
-      opt.textContent = sharedItem;
-      itemSelect.appendChild(opt);
-    }
-    itemSelect.value = sharedItem;
-  }
+  if (sharedItem && itemSelect) itemSelect.value = sharedItem;
   if (sharedRate && rateInput) { rateInput.value = sharedRate; rateInput.dataset.manual = "true"; }
   if (sharedRail && railSelect) railSelect.value = sharedRail;
   if (sharedItem && sharedRate) runCalculator();
 
+  // Calculate button: run and update URL
   const calcButton = document.getElementById("calcButton");
   if (calcButton) calcButton.addEventListener("click", () => {
     runCalculator();
@@ -1453,6 +1458,7 @@ async function init() {
     history.replaceState(null, "", "?" + newParams.toString());
   });
 
+  // Clear button: reset manual flag and navigate home
   const clearBtn = document.getElementById("clearStateBtn");
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
@@ -1463,6 +1469,7 @@ async function init() {
     });
   }
 
+  // Share button: copy current URL to clipboard
   const shareButton = document.getElementById("shareButton");
   if (shareButton) {
     shareButton.addEventListener("click", () => {
