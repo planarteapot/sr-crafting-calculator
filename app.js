@@ -557,32 +557,43 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   }
 
   function clampTranslation(proposedTx, proposedTy, proposedScale) {
-    const bbox = getContentBBox();           // content in SVG coords
-    const view = getViewSizeInSvgCoords();   // viewport in SVG coords
+    const bbox = getContentBBox();           // SVG coords
+    const view = getViewSizeInSvgCoords();   // SVG coords
 
-    const buffer = Math.max(16, Math.min(view.width, view.height) * 0.04);
+    // Fixed buffer that must always stay visible
+    const buffer = Math.max(12, Math.min(view.width, view.height) * 0.04);
 
-    // Scaled content bounds
-    const left   = (bbox.x * proposedScale) + proposedTx;
+    // Compute scaled content edges in viewport space
+    const left   = bbox.x * proposedScale + proposedTx;
     const right  = (bbox.x + bbox.width) * proposedScale + proposedTx;
-    const top    = (bbox.y * proposedScale) + proposedTy;
+    const top    = bbox.y * proposedScale + proposedTy;
     const bottom = (bbox.y + bbox.height) * proposedScale + proposedTy;
 
     let tx = proposedTx;
     let ty = proposedTy;
 
-    // Horizontal clamping
-    if (right < buffer) {
-      tx += buffer - right;
-    } else if (left > view.width - buffer) {
+    // ─────────────────────────
+    // HARD EDGE CLAMPS
+    // ─────────────────────────
+
+    // Left edge
+    if (left > view.width - buffer) {
       tx -= left - (view.width - buffer);
     }
 
-    // Vertical clamping
+    // Right edge
+    if (right < buffer) {
+      tx += buffer - right;
+    }
+
+    // Top edge
+    if (top > view.height - buffer) {
+      ty -= top - (view.height - buffer);
+    }
+
+    // Bottom edge (your explicit requirement)
     if (bottom < buffer) {
       ty += buffer - bottom;
-    } else if (top > view.height - buffer) {
-      ty -= top - (view.height - buffer);
     }
 
     return { tx, ty };
