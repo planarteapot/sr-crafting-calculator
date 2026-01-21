@@ -768,6 +768,9 @@ function renderGraph(nodes, links, rootItem) {
     const outputs = colNodes.filter(n => !(n.raw && n.depth === minDepth) && (n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && n.depth !== maxDepth);
     if (!outputs.length) continue;
     const consumerDepths = new Set();
+    // NOTE: we intentionally do not create node-to-node SVG lines.
+    // The bypass detection below still uses the logical `links` if present,
+    // but no direct node->node <line> elements will be emitted.
     for (const outNode of outputs) {
       for (const link of links) {
         if (link.to !== outNode.id) continue;
@@ -851,23 +854,12 @@ function renderGraph(nodes, links, rootItem) {
     ${spineSvg}
   `;
 
-  // Render all logical edges as explicit lines
-  const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444444';
-  const defaultRawColor = '#333333';
-  for (const link of links) {
-    const src = nodeById.get(link.from);
-    const dst = nodeById.get(link.to);
-    if (!src || !dst) continue;
-    const isRawDirect = src.raw && src.depth === minDepth && (dst.building === 'Smelter' || dst.id === BBM_ID);
-    if (isRawDirect) {
-      inner += `<line class="graph-edge graph-edge-raw" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${src.x}" y1="${src.y}" x2="${dst.x}" y2="${dst.y}" stroke="${defaultRawColor}" stroke-width="2.6" />`;
-    } else {
-      inner += `<line class="graph-edge" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${src.x}" y1="${src.y}" x2="${dst.x}" y2="${dst.y}" stroke="${defaultLineColor}" stroke-width="1.6" />`;
-    }
-  }
+  // NOTE: Node-to-node SVG edges have been removed intentionally.
+  // The code that previously emitted <line class="graph-edge"> elements is deleted.
 
   // Node-to-helper connectors and helper dots
   const helperMap = new Map();
+  const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444444';
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
