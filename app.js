@@ -1009,9 +1009,24 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
 
     const minTxLarge = view.width - layerW - bbox.x * proposedScale;
     const maxTxLarge = -bbox.x * proposedScale;
+
     // Correct vertical bounds: use content bottom explicitly and add a small margin
-    const minTyLarge = view.height - (bbox.y + bbox.height) * proposedScale - marginSvgY;
-    const maxTyLarge = -bbox.y * proposedScale + marginSvgY;
+    let minTyLarge = view.height - (bbox.y + bbox.height) * proposedScale - marginSvgY;
+    let maxTyLarge = -bbox.y * proposedScale + marginSvgY;
+
+    // If content is taller than view, allow a tiny extra slack so bottom can be reached
+    const extraSlack = Math.max(0, (layerH - view.height) * 0.02);
+    if (layerH > view.height) {
+      minTyLarge -= extraSlack;
+      maxTyLarge += 0; // keep top constraint stable
+    }
+
+    // Ensure bounds are ordered (avoid inverted ranges)
+    if (minTyLarge > maxTyLarge) {
+      const tmp = minTyLarge;
+      minTyLarge = Math.min(tmp, maxTyLarge);
+      maxTyLarge = Math.max(tmp, maxTyLarge);
+    }
 
     const overlapFraction = 0.12;
     const allowedExtraX = Math.max((view.width - layerW) * (1 - overlapFraction), 0);
