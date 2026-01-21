@@ -935,8 +935,8 @@ function renderGraph(nodes, links, rootItem) {
       const midY = (y1 + y2) / 2;
       const arrowY =
         midY +
-        ARROW_CENTER_ADJUST +
-        ARROW_GAP_FROM_LABEL;
+        ARROW_GAP_FROM_LABEL -
+        ARROW_CENTER_ADJUST;
 
       inner += `
         <polygon    
