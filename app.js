@@ -1065,45 +1065,113 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-    // Output-side bypass dots (above right helpers)
-    for (const depth of bypassOutputDepths) {
-      const node = topBypassNodeByDepth[depth];
-      if (!node) continue;
+   // ---------------------------------
+// BYPASS HELPER DOTS (TRUE HELPERS)
+// ---------------------------------
 
-      const x = node.x + nodeRadius + ANCHOR_OFFSET - BYPASS_X_INSET;
-      const y = node.y - BYPASS_Y_OFFSET;
+// top-most helper per depth
+const topRightHelperByDepth = {};
+const topLeftHelperByDepth  = {};
 
-      inner += `
-        <circle
-          cx="${x}"
-          cy="${y}"
-          r="${BYPASS_RADIUS}"
-          fill="var(--bypass-fill)"
-          stroke="var(--bypass-stroke)"
-          stroke-width="1.4"
-        />
-      `;
-    }
+for (const h of rightHelpers) {
+  if (!topRightHelperByDepth[h.depth] || h.y < topRightHelperByDepth[h.depth].y) {
+    topRightHelperByDepth[h.depth] = h;
+  }
+}
 
-    // Input-side bypass dots (above left helpers)
-    for (const depth of bypassInputDepths) {
-      const node = topBypassNodeByDepth[depth];
-      if (!node) continue;
+for (const h of leftHelpers) {
+  if (!topLeftHelperByDepth[h.depth] || h.y < topLeftHelperByDepth[h.depth].y) {
+    topLeftHelperByDepth[h.depth] = h;
+  }
+}
 
-      const x = node.x - nodeRadius - ANCHOR_OFFSET + BYPASS_X_INSET;
-      const y = node.y - BYPASS_Y_OFFSET;
+// Output-side bypass helper dots
+for (const depth of bypassOutputDepths) {
+  const h = topRightHelperByDepth[depth];
+  if (!h) continue;
 
-      inner += `
-        <circle
-          cx="${x}"
-          cy="${y}"
-          r="${BYPASS_RADIUS}"
-          fill="var(--bypass-fill)"
-          stroke="var(--bypass-stroke)"
-          stroke-width="1.4"
-        />
-      `;
-    }
+  inner += `
+    <circle
+      cx="${h.x}"
+      cy="${h.y - BYPASS_Y_OFFSET}"
+      r="${BYPASS_RADIUS}"
+      fill="var(--bypass-fill)"
+      stroke="var(--bypass-stroke)"
+      stroke-width="1.4"
+    />
+  `;
+}
+
+// Input-side bypass helper dots
+for (const depth of bypassInputDepths) {
+  const h = topLeftHelperByDepth[depth];
+  if (!h) continue;
+
+  inner += `
+    <circle
+      cx="${h.x}"
+      cy="${h.y - BYPASS_Y_OFFSET}"
+      r="${BYPASS_RADIUS}"
+      fill="var(--bypass-fill)"
+      stroke="var(--bypass-stroke)"
+      stroke-width="1.4"
+    />
+  `;
+}
+
+// ---------------------------------
+// BYPASS HELPER DOTS (TRUE HELPERS)
+// ---------------------------------
+
+// top-most helper per depth
+const topRightHelperByDepth = {};
+const topLeftHelperByDepth  = {};
+
+for (const h of rightHelpers) {
+  if (!topRightHelperByDepth[h.depth] || h.y < topRightHelperByDepth[h.depth].y) {
+    topRightHelperByDepth[h.depth] = h;
+  }
+}
+
+for (const h of leftHelpers) {
+  if (!topLeftHelperByDepth[h.depth] || h.y < topLeftHelperByDepth[h.depth].y) {
+    topLeftHelperByDepth[h.depth] = h;
+  }
+}
+
+// Output-side bypass helper dots
+for (const depth of bypassOutputDepths) {
+  const h = topRightHelperByDepth[depth];
+  if (!h) continue;
+
+  inner += `
+    <circle
+      cx="${h.x}"
+      cy="${h.y - BYPASS_Y_OFFSET}"
+      r="${BYPASS_RADIUS}"
+      fill="var(--bypass-fill)"
+      stroke="var(--bypass-stroke)"
+      stroke-width="1.4"
+    />
+  `;
+}
+
+// Input-side bypass helper dots
+for (const depth of bypassInputDepths) {
+  const h = topLeftHelperByDepth[depth];
+  if (!h) continue;
+
+  inner += `
+    <circle
+      cx="${h.x}"
+      cy="${h.y - BYPASS_Y_OFFSET}"
+      r="${BYPASS_RADIUS}"
+      fill="var(--bypass-fill)"
+      stroke="var(--bypass-stroke)"
+      stroke-width="1.4"
+    />
+  `;
+}
 
   // ---------------------------------
   // Nodes
