@@ -1004,10 +1004,14 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     const layerW = bbox.width * proposedScale;
     const layerH = bbox.height * proposedScale;
 
+    // small buffer in SVG coords
+    const marginSvgY = Math.max(8, view.height * 0.03);
+
     const minTxLarge = view.width - layerW - bbox.x * proposedScale;
     const maxTxLarge = -bbox.x * proposedScale;
-    const minTyLarge = view.height - layerH - bbox.y * proposedScale;
-    const maxTyLarge = -bbox.y * proposedScale;
+    // Correct vertical bounds: use content bottom explicitly and add a small margin
+    const minTyLarge = view.height - (bbox.y + bbox.height) * proposedScale - marginSvgY;
+    const maxTyLarge = -bbox.y * proposedScale + marginSvgY;
 
     const overlapFraction = 0.12;
     const allowedExtraX = Math.max((view.width - layerW) * (1 - overlapFraction), 0);
@@ -1029,8 +1033,8 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
       clampedTy = Math.min(maxTyLarge, Math.max(minTyLarge, proposedTy));
     } else {
       const centerTy = (view.height - layerH) / 2 - bbox.y * proposedScale;
-      const minTySmall = centerTy - allowedExtraY / 2;
-      const maxTySmall = centerTy + allowedExtraY / 2;
+      const minTySmall = centerTy - allowedExtraY / 2 - marginSvgY;
+      const maxTySmall = centerTy + allowedExtraY / 2 + marginSvgY;
       clampedTy = Math.min(maxTySmall, Math.max(minTySmall, proposedTy));
     }
 
