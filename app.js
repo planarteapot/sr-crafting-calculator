@@ -1,11 +1,9 @@
 // ===============================
-// app.js - Full updated script (final fixes)
-// - Clicking anywhere in a node highlights only its immediate inputs
-// - Clicking the same node again clears pulses (toggle off)
-// - Prevents the black focus box by inline styles and pointer-events on children
-// - Drag threshold prevents accidental activation while panning
-// - Left->right layout retained
-// - Standardized graph line styles via CSS variables and consistent attributes
+// app.js - Cleaned and CSS-integrated
+// - Graph line visuals fully controlled by CSS variables and classes
+// - Dark/light theme toggles the root class so CSS :root.dark rules apply
+// - Removed inline stroke/stroke-width from SVG lines so styles are consistent
+// - Restored robust pointer, zoom, and pulse behavior
 // ===============================
 
 /* ===============================
@@ -54,61 +52,69 @@ function getTextColor(bg) {
 }
 
 /* ===============================
-   Theme helpers (restored original behavior)
-   - isDarkMode: checks body class or body dark-mode class
-   - setupDarkMode: reads localStorage, applies class, wires toggle button
+   Theme helpers (CSS-driven)
+   - Toggle the root class so :root.dark rules apply
    =============================== */
 function isDarkMode() {
-  return document.body.classList.contains('dark') || document.body.classList.contains('dark-mode');
+  // Prefer documentElement class (matches provided CSS selectors)
+  if (document.documentElement.classList.contains('dark')) return true;
+  // Fallback to body class for older code paths
+  if (document.body.classList.contains('dark') || document.body.classList.contains('dark-mode')) return true;
+  // Respect saved preference if present
+  const saved = localStorage.getItem('darkMode');
+  if (saved === 'true') return true;
+  if (saved === 'false') return false;
+  // Finally, respect system preference
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return true;
+  return false;
+}
+
+function applyThemeClass(dark) {
+  if (dark) {
+    document.documentElement.classList.add('dark');
+    document.body.classList.add('dark');
+  } else {
+    document.documentElement.classList.remove('dark');
+    document.body.classList.remove('dark');
+  }
+  // If renderGraph installed the updater, call it to refresh graph wrappers
+  if (typeof window._updateGraphThemeVars === 'function') {
+    try { window._updateGraphThemeVars(); } catch (e) { /* ignore */ }
+  } else {
+    // fallback: update inline vars on existing wrappers
+    const vars = {
+      '--line-color': dark ? '#dcdcdc' : '#444444',
+      '--spine-color': dark ? '#bdbdbd' : '#666666',
+      '--raw-edge-color': '#333333',
+      '--label-box-fill': dark ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.92)',
+      '--label-box-stroke': dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+      '--label-text-fill': dark ? '#ffffff' : '#111111',
+      '--label-text-stroke': dark ? '#000000' : '#ffffff',
+      '--label-text-stroke-width': dark ? '1.0' : '0.6',
+      '--anchor-dot-fill': dark ? '#ffffff' : '#2c3e50',
+      '--anchor-dot-stroke': dark ? '#000000' : '#ffffff',
+      '--bypass-fill': dark ? '#ffffff' : '#2c3e50',
+      '--bypass-stroke': dark ? '#000000' : '#ffffff'
+    };
+    document.querySelectorAll('.graphWrapper').forEach(w => {
+      for (const [k, v] of Object.entries(vars)) w.style.setProperty(k, v);
+    });
+  }
 }
 
 function setupDarkMode() {
   const toggle = document.getElementById("darkModeToggle");
   if (!toggle) return;
 
-  const saved = localStorage.getItem("darkMode");
-  if (saved === "true") {
-    document.body.classList.add("dark");
-    toggle.textContent = "☀️ Light Mode";
-  } else {
-    // If no saved preference, respect system preference
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && saved === null) {
-      document.body.classList.add("dark");
-      toggle.textContent = "☀️ Light Mode";
-    } else {
-      document.body.classList.remove("dark");
-      toggle.textContent = "🌙 Dark Mode";
-    }
-  }
+  const dark = isDarkMode();
+  applyThemeClass(dark);
+  toggle.textContent = dark ? "☀️ Light Mode" : "🌙 Dark Mode";
 
   toggle.addEventListener("click", () => {
-    const isDark = document.body.classList.toggle("dark");
-    localStorage.setItem("darkMode", isDark);
-    toggle.textContent = isDark ? "☀️ Light Mode" : "🌙 Dark Mode";
-    // If renderGraph installed the updater, call it to refresh graph wrappers
-    if (typeof window._updateGraphThemeVars === 'function') {
-      try { window._updateGraphThemeVars(); } catch (e) { /* ignore */ }
-    } else {
-      // fallback: update inline vars on existing wrappers
-      const darkNow = isDarkMode();
-      const vars = {
-        '--line-color': darkNow ? '#dcdcdc' : '#444444',
-        '--spine-color': darkNow ? '#bdbdbd' : '#666666',
-        '--raw-edge-color': '#333333',
-        '--label-box-fill': darkNow ? 'rgba(0,0,0,0.88)' : 'rgba(255,255,255,0.92)',
-        '--label-box-stroke': darkNow ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-        '--label-text-fill': darkNow ? '#ffffff' : '#111111',
-        '--label-text-stroke': darkNow ? '#000000' : '#ffffff',
-        '--label-text-stroke-width': darkNow ? '1.0' : '0.6',
-        '--anchor-dot-fill': darkNow ? '#ffffff' : '#2c3e50',
-        '--anchor-dot-stroke': darkNow ? '#000000' : '#ffffff',
-        '--bypass-fill': darkNow ? '#ffffff' : '#2c3e50',
-        '--bypass-stroke': darkNow ? '#000000' : '#ffffff'
-      };
-      document.querySelectorAll('.graphWrapper').forEach(w => {
-        for (const [k, v] of Object.entries(vars)) w.style.setProperty(k, v);
-      });
-    }
+    const nowDark = !document.documentElement.classList.contains('dark');
+    applyThemeClass(nowDark);
+    localStorage.setItem('darkMode', nowDark ? 'true' : 'false');
+    toggle.textContent = nowDark ? "☀️ Light Mode" : "🌙 Dark Mode";
   });
 }
 
@@ -129,29 +135,23 @@ function showToast(message) {
   }, 2500);
 }
 
-// Info bubble behavior
+/* ===============================
+   Info bubble behavior
+   =============================== */
 (function () {
   const infoBtn = document.getElementById('infoButton');
   const infoPanel = document.getElementById('infoPanel');
   const infoClose = document.getElementById('infoClose');
-  const itemSelect = document.getElementById('itemSelect');
 
   if (!infoBtn || !infoPanel) return;
 
   function openPanel() {
-    // Position panel to the left of the item select (or fallback near the button)
     const btnRect = infoBtn.getBoundingClientRect();
-    const containerRect = document.getElementById('tableContainer')?.getBoundingClientRect() || document.body.getBoundingClientRect();
-
-    // Prefer placing panel below the controls and aligned with the button
     infoPanel.style.top = (window.scrollY + btnRect.bottom + 8) + 'px';
     infoPanel.style.left = (window.scrollX + btnRect.left) + 'px';
-
     infoPanel.classList.add('open');
     infoPanel.setAttribute('aria-hidden', 'false');
     infoBtn.setAttribute('aria-expanded', 'true');
-
-    // Move focus into panel for accessibility
     infoClose.focus();
   }
 
@@ -162,26 +162,23 @@ function showToast(message) {
     infoBtn.focus();
   }
 
-  infoBtn.addEventListener('click', function (e) {
+  infoBtn.addEventListener('click', function () {
     const expanded = infoBtn.getAttribute('aria-expanded') === 'true';
     if (expanded) closePanel(); else openPanel();
   });
 
   infoClose.addEventListener('click', closePanel);
 
-  // Close on outside click
   document.addEventListener('click', function (e) {
     if (!infoPanel.classList.contains('open')) return;
     if (infoPanel.contains(e.target) || infoBtn.contains(e.target)) return;
     closePanel();
   });
 
-  // Close on Escape
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && infoPanel.classList.contains('open')) closePanel();
   });
 
-  // Reposition on resize/scroll for robustness
   window.addEventListener('resize', function () {
     if (infoPanel.classList.contains('open')) openPanel();
   });
@@ -209,36 +206,27 @@ async function loadRecipes() {
   let data = null;
   try {
     data = await fetchJson(localPath);
-    console.info("Loaded recipes from local data/recipes.json");
   } catch (localErr) {
-    console.warn("Local recipes.json not found or failed to load, falling back to remote:", localErr);
     try {
       data = await fetchJson(remotePath);
-      console.info("Loaded recipes from remote URL");
     } catch (remoteErr) {
-      console.error("Failed to load recipes from remote URL as well:", remoteErr);
+      console.error("Failed to load recipes:", remoteErr);
       const out = document.getElementById("outputArea");
       if (out) out.innerHTML = `<p style="color:red;">Error loading recipe data. Please try again later.</p>`;
       return {};
     }
   }
 
-  if (!data || typeof data !== "object") {
-    console.error("Invalid recipe data format");
-    return {};
-  }
+  if (!data || typeof data !== "object") return {};
 
   RECIPES = data;
 
   TIERS = {};
   for (const [name, recipe] of Object.entries(RECIPES)) {
-    if (typeof recipe.tier === "number") {
-      TIERS[name] = recipe.tier;
-      continue;
-    }
-    TIERS[name] = 0;
+    TIERS[name] = (recipe && typeof recipe.tier === 'number') ? recipe.tier : 0;
   }
 
+  // propagate tiers based on inputs
   let changed = true;
   for (let pass = 0; pass < 50 && changed; pass++) {
     changed = false;
@@ -257,31 +245,18 @@ async function loadRecipes() {
     }
   }
 
+  // populate select if present
   const select = document.getElementById("itemSelect");
   if (select) {
-    const items = Object.keys(RECIPES).sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+    const items = Object.keys(RECIPES).filter(k => k !== "_tiers").sort((a,b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const prev = select.value;
-    select.innerHTML = items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
+    select.innerHTML = `<option value="" disabled selected>Select Item Here</option>` + items.map(it => `<option value="${escapeHtml(it)}">${escapeHtml(it)}</option>`).join("");
     if (prev && items.includes(prev)) select.value = prev;
   }
 
   window.RECIPES = RECIPES;
   window.TIERS = TIERS;
-  console.info("Recipes loaded:", Object.keys(RECIPES).length, "items");
   return RECIPES;
-}
-
-async function reloadRecipes() {
-  RECIPES = {};
-  TIERS = {};
-  await loadRecipes();
-  if (window._lastSelectedItem) {
-    const rate = window._lastSelectedRate || 60;
-    const { chain } = expandChain(window._lastSelectedItem, rate);
-    const graph = buildGraphData(chain, window._lastSelectedItem);
-    document.getElementById('graphArea').innerHTML = renderGraph(graph.nodes, graph.links, window._lastSelectedItem);
-    attachNodePointerHandlers(document.querySelector('.graphWrapper'));
-  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -442,7 +417,7 @@ function buildGraphData(chain, rootItem) {
 /* ===============================
    Inject minimal pulse CSS via JS (optional)
    - keeps animations available; you can remove if you prefer no CSS
-   - also standardizes line styles for the graph
+   - standardizes line styles so CSS controls visuals
    =============================== */
 (function injectPulseStylesIfMissing() {
   if (document.getElementById('graphPulseStyles')) return;
@@ -468,7 +443,7 @@ function buildGraphData(chain, rootItem) {
       line.pulse-edge { animation: none !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
     }
 
-    /* Standardized line styles */
+    /* Standardized line styles (driven by CSS variables in your stylesheet) */
     .graphSVG line { stroke-linecap: round; stroke-opacity: 0.95; }
     .graph-edge, .node-to-anchor, .bypass-connector { stroke: var(--line-color); stroke-width: 1.6; stroke-linecap: round; stroke-opacity: 0.95; }
     .graph-spine-vertical, .graph-spine-horizontal { stroke: var(--spine-color); stroke-width: 2; stroke-linecap: round; stroke-opacity: 0.95; }
@@ -479,9 +454,9 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (full)
-   - Uses CSS variables for colors and label box
-   - Connectors now use standardized stroke attributes via CSS variables
+   renderGraph
+   - All line elements use classes only; no inline stroke/stroke-width for lines
+   - Node circles and label boxes keep inline fills for machine color
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -494,12 +469,14 @@ function renderGraph(nodes, links, rootItem) {
   function anchorRightPos(node) { return { x: roundCoord(node.x + nodeRadius + ANCHOR_OFFSET), y: roundCoord(node.y) }; }
   function anchorLeftPos(node)  { return { x: roundCoord(node.x - nodeRadius - ANCHOR_OFFSET), y: roundCoord(node.y) }; }
 
+  // defaults
   for (const n of nodes) {
     if (typeof n.hasInputAnchor === 'undefined') n.hasInputAnchor = true;
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
     if (typeof n.depth === 'undefined') n.depth = 0;
   }
 
+  // place BBM in smelter column if present
   const bbmNode = nodes.find(n => n.id === BBM_ID || n.label === BBM_ID);
   if (bbmNode) {
     const smelterDepths = nodes.filter(n => n.building === 'Smelter').map(n => n.depth);
@@ -515,6 +492,7 @@ function renderGraph(nodes, links, rootItem) {
 
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
+  // group by depth and layout
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
@@ -528,6 +506,7 @@ function renderGraph(nodes, links, rootItem) {
     });
   }
 
+  // bounds
   const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
   const maxX = nodes.length ? Math.max(...xs) : 0;
@@ -557,6 +536,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
+  // shortest gap for bypass placement
   const uniqueYs = Array.from(new Set(willRenderAnchors.map(a => a.pos.y))).sort((a,b)=>a-b);
   let shortestGap = nodeRadius + ANCHOR_OFFSET;
   if (uniqueYs.length >= 2) {
@@ -569,6 +549,7 @@ function renderGraph(nodes, links, rootItem) {
   }
   shortestGap = roundCoord(shortestGap);
 
+  // compute bypass centers
   const depthsSorted = Object.keys(columns).map(d=>Number(d)).sort((a,b)=>a-b);
   const needsOutputBypass = new Map();
   for (const depth of depthsSorted) {
@@ -605,11 +586,12 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
+  // expose for debugging
   window._needsOutputBypass = needsOutputBypass;
   window._needsInputBypass = needsInputBypass;
   window._graphNodes = nodes;
 
-  // build spines
+  // build spines (no inline stroke attributes)
   let spineSvg = '';
   (function buildSpines(){
     for (let i=0;i<depthsSorted.length;i++){
@@ -647,6 +629,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   })();
 
+  // defs and initial inner
   let inner = `
     <defs>
       <filter id="labelBackdrop" x="-40%" y="-40%" width="180%" height="180%">
@@ -658,7 +641,7 @@ function renderGraph(nodes, links, rootItem) {
     ${spineSvg}
   `;
 
-  // raw->smelter edges (use class graph-edge-raw)
+  // raw->smelter edges (class-only)
   for (const link of links) {
     const rawSource = nodeById.get(link.to);
     const consumer = nodeById.get(link.from);
@@ -669,7 +652,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // bypass connectors
+  // bypass connectors (class-only)
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-output-connector" data-depth="${depth}" x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.helperCenter.y}" />`;
   }
@@ -684,7 +667,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // node->anchor short connectors
+  // node->anchor short connectors (class-only)
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
@@ -703,7 +686,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // nodes, labels, anchors
+  // nodes, labels, anchors (node fills/strokes kept inline for clarity)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
     const strokeColor = "#2c3e50";
@@ -753,6 +736,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `<g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="false"><circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="var(--bypass-fill)" stroke="var(--bypass-stroke)" stroke-width="1.2" /></g>`;
   }
 
+  // initial CSS vars from current theme (applied inline on wrapper for immediate correctness)
   const dark = !!(typeof isDarkMode === 'function' ? isDarkMode() : false);
   const initialVars = {
     '--line-color': dark ? '#dcdcdc' : '#444444',
@@ -819,19 +803,16 @@ function renderGraph(nodes, links, rootItem) {
           }
         }
       });
-      mo.observe(target, { attributes: true, attributeFilter: ['class', 'data-theme', 'theme'] });
+      mo.observe(target, { attributes: true, attributeFilter: ['class','data-theme','theme'] });
 
-      // Also listen to system preference changes
       if (window.matchMedia) {
         const mq = window.matchMedia('(prefers-color-scheme: dark)');
         if (typeof mq.addEventListener === 'function') mq.addEventListener('change', updateAllGraphWrappers);
         else if (typeof mq.addListener === 'function') mq.addListener(updateAllGraphWrappers);
       }
 
-      // Expose manual trigger
       window._updateGraphThemeVars = updateAllGraphWrappers;
     } catch (e) {
-      // Fallback: expose manual trigger only
       window._updateGraphThemeVars = updateAllGraphWrappers;
     }
   })();
@@ -841,8 +822,6 @@ function renderGraph(nodes, links, rootItem) {
 
 /* ===============================
    Highlighting (strict immediate-only, toggle)
-   - Only circle and line elements receive pulse classes
-   - Clicking the same node toggles pulses off
    =============================== */
 function clearPulses(svg) {
   if (!svg) return;
@@ -854,23 +833,19 @@ function clearPulses(svg) {
 function highlightOutgoing(nodeId, svg) {
   if (!svg || !nodeId) return;
 
-  // If origin circle already has pulse-origin, toggle off
   const originCircle = svg.querySelector(`circle.graph-node-circle[data-id="${CSS.escape(nodeId)}"]`);
   if (originCircle && originCircle.classList.contains('pulse-origin')) {
     clearPulses(svg);
     return;
   }
 
-  // Clear previous pulses (only circles/lines)
   clearPulses(svg);
 
-  // Mark origin circle only
   if (originCircle) originCircle.classList.add('pulse-origin');
 
-  // Find outgoing edges (consumer -> its inputs)
+  // outgoing edges (consumer -> inputs)
   const outgoing = Array.from(svg.querySelectorAll(`line.graph-edge[data-from="${CSS.escape(nodeId)}"]`));
 
-  // Immediate inputs only
   outgoing.forEach(edgeEl => {
     edgeEl.classList.add('pulse-edge');
     const toId = edgeEl.getAttribute('data-to');
@@ -881,34 +856,27 @@ function highlightOutgoing(nodeId, svg) {
 
 /* ===============================
    Pointer handling (centralized on wrapper)
-   - Single pointer handlers on wrapper detect clicks on any child element
-   - Uses pointerId map to track drag vs click per pointer
    =============================== */
 function attachNodePointerHandlers(wrapper) {
   if (!wrapper) return;
   const svg = wrapper.querySelector('svg.graphSVG');
   if (!svg) return;
 
-  // Map pointerId -> { nodeId, startX, startY, isDragging }
   const pointerMap = new Map();
 
   function getThreshold(ev) {
     return (ev && ev.pointerType === 'touch') ? TOUCH_THRESHOLD_PX : DRAG_THRESHOLD_PX;
   }
 
-  // pointerdown on wrapper (capture early)
   wrapper.addEventListener('pointerdown', (ev) => {
-    // find nearest graph-node ancestor of the event target
     const nodeGroup = ev.target.closest && ev.target.closest('g.graph-node[data-id]');
-    if (!nodeGroup) return; // not a node, ignore
-    // stop propagation so global pan doesn't start
+    if (!nodeGroup) return;
     ev.stopPropagation();
     try { nodeGroup.setPointerCapture?.(ev.pointerId); } catch (e) {}
     const nodeId = nodeGroup.getAttribute('data-id');
     pointerMap.set(ev.pointerId, { nodeId, startX: ev.clientX, startY: ev.clientY, isDragging: false });
   }, { passive: false });
 
-  // pointermove on window to track dragging
   window.addEventListener('pointermove', (ev) => {
     const entry = pointerMap.get(ev.pointerId);
     if (!entry) return;
@@ -921,7 +889,6 @@ function attachNodePointerHandlers(wrapper) {
     }
   }, { passive: true });
 
-  // pointerup on wrapper to finalize click vs drag
   wrapper.addEventListener('pointerup', (ev) => {
     const entry = pointerMap.get(ev.pointerId);
     if (!entry) return;
@@ -930,19 +897,16 @@ function attachNodePointerHandlers(wrapper) {
       nodeGroup && nodeGroup.releasePointerCapture?.(ev.pointerId);
     } catch (e) {}
     if (!entry.isDragging) {
-      // confirmed click — highlight immediate inputs (toggle behavior inside)
       highlightOutgoing(entry.nodeId, svg);
     }
     pointerMap.delete(ev.pointerId);
     ev.stopPropagation();
   }, { passive: false });
 
-  // pointercancel cleanup
   wrapper.addEventListener('pointercancel', (ev) => {
     pointerMap.delete(ev.pointerId);
   });
 
-  // keyboard support: Enter/Space on group
   svg.querySelectorAll('g.graph-node[data-id]').forEach(group => {
     group.addEventListener('keydown', (ev) => {
       if (ev.key === 'Enter' || ev.key === ' ') {
@@ -953,7 +917,6 @@ function attachNodePointerHandlers(wrapper) {
     });
   });
 
-  // clicking outside clears pulses
   function onDocClick(e) {
     if (!svg.contains(e.target)) clearPulses(svg);
   }
@@ -962,7 +925,7 @@ function attachNodePointerHandlers(wrapper) {
 }
 
 /* ===============================
-   Helper: detect if pointer target is a node (used to prevent starting pan)
+   Helper: detect if pointer target is a node
    =============================== */
 function pointerIsOnNode(ev) {
   return !!(ev.target && ev.target.closest && ev.target.closest('g.graph-node[data-id]'));
@@ -970,31 +933,24 @@ function pointerIsOnNode(ev) {
 
 /* ===============================
    Zoom / pan utilities (pointer-based)
-   - pan start is guarded by pointerIsOnNode so nodes handle their own pointers
    =============================== */
 function ensureResetButton() {
   let btn = document.querySelector('.graphResetButton');
   const graphArea = document.getElementById('graphArea');
   if (!graphArea) return null;
 
-  // If button exists but not in the correct place, remove it so we can recreate correctly
   if (btn && btn.nextElementSibling !== graphArea) {
     btn.remove();
     btn = null;
   }
 
-  // Create button container if missing
   if (!btn) {
     btn = document.createElement('div');
     btn.className = 'graphResetButton';
     btn.innerHTML = `<button id="resetViewBtn" type="button">Reset view</button>`;
-
-    // Insert the button directly before the graphArea so it stays above it in document flow
     graphArea.parentNode.insertBefore(btn, graphArea);
-
-    // Minimal inline styles to center the button and keep it out of the graph's interactive area
     btn.style.display = 'flex';
-    btn.style.justifyContent = 'center'; // CENTER the button horizontally
+    btn.style.justifyContent = 'center';
     btn.style.alignItems = 'center';
     btn.style.padding = '8px 12px';
     btn.style.boxSizing = 'border-box';
@@ -1003,20 +959,15 @@ function ensureResetButton() {
     btn.style.pointerEvents = 'auto';
   }
 
-  // Ensure the graphArea has top padding so the SVG cannot be panned/zoomed under the button
   function adjustGraphTopPadding() {
     if (!btn || !graphArea) return;
-    // Measure button height after layout
     const h = Math.max(0, btn.offsetHeight || 0);
-    const gap = 8; // small gap between button and graph
-    // Apply padding-top to graphArea; preserve any existing padding-bottom etc.
+    const gap = 8;
     graphArea.style.paddingTop = (h + gap) + 'px';
   }
 
-  // Run once after insertion to set padding
   requestAnimationFrame(() => adjustGraphTopPadding());
 
-  // Keep padding correct on window resize (debounced)
   let resizeTimer = null;
   function onResize() {
     if (resizeTimer) clearTimeout(resizeTimer);
@@ -1133,7 +1084,6 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
 
   // Pointer-based pan start (guarded by pointerIsOnNode)
   svg.addEventListener('pointerdown', (ev) => {
-    // If pointer is on a node, do not start pan here (node handlers will manage)
     if (pointerIsOnNode(ev)) return;
     if (ev.button !== 0) return;
     isPanning = true;
@@ -1377,9 +1327,7 @@ function runCalculator() {
 /* ===============================
    Initialization
    =============================== */
-
 async function init() {
-  // Restore original dark mode initialization
   setupDarkMode();
 
   const data = await loadRecipes();
@@ -1408,7 +1356,6 @@ async function init() {
     });
   }
 
-  // Helper: compute natural/base rate for the currently selected item
   function getNaturalPerMinForSelected() {
     const slug = itemSelect?.value;
     const recipe = RECIPES[slug];
@@ -1416,53 +1363,37 @@ async function init() {
     return Math.round((recipe.output / recipe.time) * 60);
   }
 
-  // --- Rate input: allow full backspacing; revert only on blur/Enter/Escape/item change ---
   if (itemSelect && rateInput) {
-    // When item changes, set rate to natural value only if user hasn't manually set one.
     itemSelect.addEventListener("change", () => {
       const naturalPerMin = getNaturalPerMinForSelected();
       if (!rateInput.dataset.manual) {
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       }
-      // If the field is empty when switching items, ensure it reverts to the new base immediately
       if (rateInput.value.trim() === "") {
         rateInput.dataset.manual = "";
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       }
     });
 
-    // Keep user input intact while typing; mark manual when they type a non-empty numeric value
     rateInput.addEventListener("input", () => {
       const rawVal = rateInput.value;
-      // If user cleared the field, do not auto-revert here — allow them to type
-      if (rawVal.trim() === "") {
-        // leave dataset.manual as-is so we don't overwrite while focused
-        return;
-      }
-      // If they typed a number, mark as manual so item changes won't overwrite it
+      if (rawVal.trim() === "") return;
       const numeric = Number(rawVal);
       if (!Number.isNaN(numeric)) {
         rateInput.dataset.manual = "true";
-      } else {
-        // non-numeric input: keep it so user can correct it; do not revert
       }
     });
 
-    // On blur: if empty, revert to base; otherwise accept value and optionally trigger calculation
     rateInput.addEventListener("blur", () => {
       if (rateInput.value.trim() === "") {
         rateInput.dataset.manual = "";
         const naturalPerMin = getNaturalPerMinForSelected();
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
       } else {
-        // user provided a value — mark manual and trigger calc if desired
         rateInput.dataset.manual = "true";
-        // Optionally trigger calculation here:
-        // document.getElementById('calcButton')?.click();
       }
     });
 
-    // On Enter: accept value or revert if empty; Escape reverts immediately
     rateInput.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         if (rateInput.value.trim() === "") {
@@ -1471,20 +1402,16 @@ async function init() {
           rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
         } else {
           rateInput.dataset.manual = "true";
-          // Optionally trigger calculation here:
-          // document.getElementById('calcButton')?.click();
         }
       } else if (e.key === "Escape") {
         rateInput.dataset.manual = "";
         const naturalPerMin = getNaturalPerMinForSelected();
         rateInput.value = naturalPerMin !== null ? naturalPerMin : "";
-        // keep focus on input so user can continue typing if desired
         rateInput.focus();
       }
     });
   }
 
-  // Read shared params from URL
   const params = new URLSearchParams(window.location.search);
   const sharedItem = params.get("item");
   const sharedRate = params.get("rate");
@@ -1495,7 +1422,6 @@ async function init() {
   if (sharedRail && railSelect) railSelect.value = sharedRail;
   if (sharedItem && sharedRate) runCalculator();
 
-  // Calculate button: run and update URL
   const calcButton = document.getElementById("calcButton");
   if (calcButton) calcButton.addEventListener("click", () => {
     runCalculator();
@@ -1506,7 +1432,6 @@ async function init() {
     history.replaceState(null, "", "?" + newParams.toString());
   });
 
-  // Clear button: reset manual flag and navigate home
   const clearBtn = document.getElementById("clearStateBtn");
   if (clearBtn) {
     clearBtn.addEventListener("click", () => {
@@ -1517,7 +1442,6 @@ async function init() {
     });
   }
 
-  // Share button: copy current URL to clipboard
   const shareButton = document.getElementById("shareButton");
   if (shareButton) {
     shareButton.addEventListener("click", () => {
