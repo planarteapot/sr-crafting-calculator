@@ -334,13 +334,12 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (center-to-center connectors)
+   renderGraph (final: strict center-to-center)
    - All connectors target circle centers (node centers, helper centers, bypass centers)
-   - Bypass centers are placed so their center sits exactly `shortestGap` above the helper center
+   - Bypass center is computed directly from the top helper center Y (explicitly used)
    - Vertical connectors use the bypass/input anchor X so they are truly vertical
-   - Connectors drawn before dots; use stroke-linecap="butt" to avoid cap artifacts
-   - Preserves BBM alignment, smelter left-anchor suppression, final-column suppression, alphabetical layout
-   - Assumes existing globals: GRAPH_COL_WIDTH, GRAPH_ROW_HEIGHT, GRAPH_CONTENT_PAD,
+   - Connectors drawn before dots; stroke-linecap="butt" to avoid cap artifacts
+   - Assumes globals: GRAPH_COL_WIDTH, GRAPH_ROW_HEIGHT, GRAPH_CONTENT_PAD,
      GRAPH_LABEL_OFFSET, MACHINE_COLORS, isDarkMode(), escapeHtml(), getTextColor()
    =============================== */
 function renderGraph(nodes, links, rootItem) {
@@ -451,7 +450,7 @@ function renderGraph(nodes, links, rootItem) {
     shortestGap = nodeRadius + ANCHOR_OFFSET;
   }
 
-  // Compute output bypass dots (center-to-center)
+  // Compute output bypass dots (center-to-center, explicitly using top helper center Y)
   const depthsSorted = Object.keys(columns).map(d => Number(d)).sort((a, b) => a - b);
   const needsOutputBypass = new Map(); // depth -> { x, y, topHelperCenter:{x,y}, causingConsumers:Set }
 
@@ -475,11 +474,15 @@ function renderGraph(nodes, links, rootItem) {
     }
     if (consumerDepths.size === 0) continue;
 
+    // pick the top-most output node in this column
     const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b));
-    const topHelperCenter = anchorTopPos(topOutputNode); // canonical helper center
-    const anchorX = anchorRightPos(topOutputNode).x; // bypass X aligned with output anchors
+    // canonical helper center for that top node (this is the exact center used to draw the helper dot)
+    const topHelperCenter = anchorTopPos(topOutputNode);
 
-    // center-to-center: place bypass center so its center sits shortestGap above helper center
+    // anchor X for bypass (aligned with output anchors)
+    const anchorX = anchorRightPos(topOutputNode).x;
+
+    // CENTER-TO-CENTER rule: bypass center sits exactly `shortestGap` above the helper center
     // bypassCenterY = helperCenterY - shortestGap
     const bypassCenterY = topHelperCenter.y - shortestGap;
 
@@ -580,7 +583,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // --- Draw vertical connectors center-to-center (draw BEFORE dots so dots sit on top) ---
+  // --- Draw vertical connectors CENTER-TO-CENTER (draw BEFORE dots so dots sit on top) ---
   // Output connectors: from bypass center to helper center
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `
