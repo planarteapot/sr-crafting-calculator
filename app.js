@@ -1049,7 +1049,8 @@ function renderGraph(nodes, links, rootItem) {
               markerWidth="8"
               markerHeight="8"
               orient="auto"
-              markerUnits="userSpaceOnUse">
+              markerUnits="userSpaceOnUse"
+              overflow="visible">
         <path d="M0 6 L4 0 L8 6 Z" fill="var(--spine-color)" />
       </marker>
 
