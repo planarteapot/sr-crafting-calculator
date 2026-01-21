@@ -1086,6 +1086,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   }
 
   function applyTransform() {
+    // clamp current tx/ty before applying
     const clamped = clampTranslation(tx, ty, scale);
     tx = clamped.tx;
     ty = clamped.ty;
@@ -1119,6 +1120,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     const delta = -ev.deltaY;
     const factor = delta > 0 ? 1.08 : 0.92;
     const newScale = Math.min(3, Math.max(0.25, +(scale * factor).toFixed(3)));
+    // call zoomAt which clamps and applies transform
     zoomAt(newScale, ev.clientX, ev.clientY);
   }, { passive: false });
 
