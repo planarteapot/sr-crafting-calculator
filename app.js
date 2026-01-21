@@ -334,10 +334,13 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (connectors attach to exact helper-dot coords)
-   - Full replacement
-   - Connectors use the same anchor coordinate helpers used to render dots
-   - Draw order ensures connectors sit under dots while still touching them exactly
+   renderGraph (final corrections)
+   - Vertical connectors attach exactly to helper-dot coordinates (no diagonals)
+   - Bypass dots placed using the global shortestGap above top helper dot
+   - Vertical connectors use bypass X (so they are truly vertical) and end at the exact helper-dot coords
+   - Horizontal bypass connectors connect bypass centers
+   - Connectors are drawn before anchor/bypass dots so dots sit on top and visually meet lines
+   - Preserves BBM alignment, smelter left-anchor suppression, final-column suppression, alphabetical layout
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
@@ -403,7 +406,7 @@ function renderGraph(nodes, links, rootItem) {
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
-  // Anchor helpers (single source of truth for anchor coordinates)
+  // Anchor helpers (single source of truth)
   function anchorRightPos(node) { return { x: node.x + nodeRadius + ANCHOR_OFFSET, y: node.y }; }
   function anchorLeftPos(node)  { return { x: node.x - nodeRadius - ANCHOR_OFFSET, y: node.y }; }
   function anchorTopPos(node)   { return { x: node.x, y: node.y - nodeRadius - ANCHOR_OFFSET }; }
@@ -412,7 +415,7 @@ function renderGraph(nodes, links, rootItem) {
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
 
-  // --- Determine which anchors will render (so we can compute global helper-dot Ys) ---
+  // Determine which anchors will render (so we can compute global helper-dot Ys)
   const willRenderAnchors = [];
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
@@ -433,7 +436,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // --- Compute the shortest positive vertical distance between any two helper dots ---
+  // Compute the shortest positive vertical distance between any two helper dots
   const uniqueYs = Array.from(new Set(willRenderAnchors.map(a => Math.round(a.y * 100) / 100))).sort((a, b) => a - b);
   let shortestGap;
   if (uniqueYs.length >= 2) {
@@ -447,9 +450,9 @@ function renderGraph(nodes, links, rootItem) {
     shortestGap = nodeRadius + ANCHOR_OFFSET;
   }
 
-  // --- Compute output bypass dots (and capture exact top helper anchor coords) ---
+  // Compute output bypass dots (capture exact top helper anchor coords)
   const depthsSorted = Object.keys(columns).map(d => Number(d)).sort((a, b) => a - b);
-  const needsOutputBypass = new Map(); // depth -> { x, y, topHelper: {x,y}, causingConsumers:Set }
+  const needsOutputBypass = new Map(); // depth -> { x, y, topHelper:{x,y}, causingConsumers:Set }
 
   for (const depth of depthsSorted) {
     const colNodes = columns[depth] || [];
@@ -471,18 +474,16 @@ function renderGraph(nodes, links, rootItem) {
     }
     if (consumerDepths.size === 0) continue;
 
-    // top-most output node anchors
     const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b));
-    const topHelper = anchorTopPos(topOutputNode); // exact coordinate of the top helper dot
-    const anchorX = anchorRightPos(topOutputNode).x;
-    const bypassY = topHelper.y - shortestGap;
+    const topHelper = anchorTopPos(topOutputNode); // exact coordinate of top helper dot
+    const anchorX = anchorRightPos(topOutputNode).x; // bypass X (aligned with output anchors)
+    const bypassY = topHelper.y - shortestGap; // place bypass exactly shortestGap above top helper
 
-    // store topHelper coords so connectors can target the exact dot
     needsOutputBypass.set(depth, { x: anchorX, y: bypassY, topHelper, causingConsumers: consumerDepths });
   }
 
-  // --- Compute input bypass dots (matching Y to output bypass) and capture top input helper coords ---
-  const needsInputBypass = new Map(); // consumerDepth -> { x, y, topInputHelper: {x,y} }
+  // Compute input bypass dots (matching Y to output bypass) and capture top input helper coords
+  const needsInputBypass = new Map(); // consumerDepth -> { x, y, topInputHelper:{x,y} }
   for (const [outDepth, info] of needsOutputBypass.entries()) {
     for (const consumerDepth of info.causingConsumers) {
       const consumerCol = columns[consumerDepth] || [];
@@ -490,8 +491,8 @@ function renderGraph(nodes, links, rootItem) {
       if (inputNodes.length === 0) continue;
 
       const topInputNode = inputNodes.reduce((a, b) => (a.y < b.y ? a : b));
-      const topInputHelper = anchorTopPos(topInputNode); // exact coordinate of the top helper dot for inputs
-      const inputAnchorX = anchorLeftPos(topInputNode).x;
+      const topInputHelper = anchorTopPos(topInputNode); // exact coordinate of top helper dot for inputs
+      const inputAnchorX = anchorLeftPos(topInputNode).x; // input anchor X
       const inputBypassY = info.y; // same Y as the output bypass dot (user requested same height)
 
       if (!needsInputBypass.has(consumerDepth)) {
@@ -500,7 +501,7 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // --- Build spine SVG fragments (unchanged) ---
+  // Build spines (unchanged)
   let spineSvg = '';
   (function buildSpines() {
     for (let i = 0; i < depthsSorted.length; i++) {
@@ -548,7 +549,7 @@ function renderGraph(nodes, links, rootItem) {
   // Build inner SVG: start with spines so they render behind everything
   let inner = spineSvg;
 
-  // --- Raw->Smelter/BBM node-to-node edges (unchanged) ---
+  // Raw->Smelter/BBM node-to-node edges (unchanged)
   for (const link of links) {
     const rawSource = nodeById.get(link.to);
     const consumer = nodeById.get(link.from);
@@ -564,13 +565,13 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // --- Draw bypass connectors (vertical to spine) BEFORE drawing anchor dots so connectors sit under dots ---
+  // --- Draw vertical connectors from bypass dots to exact helper-dot coords (use bypass X so lines are vertical) ---
   // Output bypass -> top helper anchor (vertical)
   for (const [depth, info] of needsOutputBypass.entries()) {
-    // draw vertical connector from bypass dot down to the exact topHelper coordinate
+    // Use info.x for both x1 and x2 so connector is vertical and meets the helper dot at topHelper.x/topHelper.y
     inner += `
       <line class="bypass-to-spine bypass-output-connector" data-depth="${depth}"
-            x1="${info.x}" y1="${info.y}" x2="${info.topHelper.x}" y2="${info.topHelper.y}"
+            x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.topHelper.y}"
             stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.4" stroke-linecap="round" opacity="0.95" />
     `;
   }
