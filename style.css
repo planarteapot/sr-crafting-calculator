@@ -233,19 +233,40 @@ font-weight: 700;
 /* ============================
   Graph area + wrapper
   ============================ */
-#graphArea { margin-top: 8px; }
+#graphArea {
+  margin-top: 12px;
+
+  /* Visual separation */
+  background: linear-gradient(
+    180deg,
+    rgba(0,0,0,0.03),
+    rgba(0,0,0,0.06)
+  );
+  border-radius: 14px;
+
+  /* THIS creates non-interactive side zones */
+  padding: 0 48px 16px 48px;
+
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.06),
+    0 6px 18px rgba(0,0,0,0.08);
+}
 
 .graphWrapper {
-box-sizing: border-box;
-width: 100%;
-max-width: 100%;
-max-height: calc(100vh - 220px);
-overflow: hidden; /* panning via transform */
-padding: 8px;
-padding-top: 12px;
-border-radius: 6px;
-background: rgba(255,255,255,0.02);
-transition: background 160ms ease;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(100vh - 260px);
+
+  overflow: hidden; /* pan via transform only */
+  padding: 12px;
+
+  border-radius: 10px;
+
+  /* Strong visual contrast */
+  background: var(--panel-bg);
+
+  transition: background 160ms ease;
 }
 
 .graphWrapper .graphViewport {
