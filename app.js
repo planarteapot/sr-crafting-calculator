@@ -988,6 +988,25 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   let startY = 0;
   let activePointerId = null;
 
+  // --- Defensive: remove known competing global pointermove listeners (best-effort)
+  // This targets listeners whose source contains "pointerMap" (the competing handler you observed).
+  // It uses getEventListeners when available (DevTools helper). If not available, it does nothing.
+  try {
+    if (typeof getEventListeners === 'function') {
+      const pm = (getEventListeners(window).pointermove || []);
+      pm.forEach(entry => {
+        const fn = entry.listener || entry;
+        try {
+          const src = (fn && fn.toString && fn.toString()) || '';
+          if (src.includes('pointerMap') || src.includes('pointerMap.get') || src.includes('pointerMap.set')) {
+            window.removeEventListener('pointermove', fn);
+            console.info('Removed competing pointermove listener referencing pointerMap');
+          }
+        } catch (e) { /* ignore per-listener errors */ }
+      });
+    }
+  } catch (e) { /* ignore defensive removal errors */ }
+
   // Helpers (single authoritative definitions)
   function getContentBBox() {
     try { return zoomLayer.getBBox(); }
@@ -1093,7 +1112,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
-  // Named handlers so we can remove them later
+  // Named handlers so we can remove them later and avoid duplicates
   function onWheel(ev) {
     ev.preventDefault();
     const delta = -ev.deltaY;
@@ -1104,6 +1123,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
 
   function onPointerDown(ev) {
     if (typeof pointerIsOnNode === 'function' && pointerIsOnNode(ev)) return;
+    // only primary pointer and left button start panning
     if (ev.button !== 0 || !ev.isPrimary) return;
     isPanning = true;
     activePointerId = ev.pointerId;
@@ -1114,6 +1134,7 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
   }
 
   function onPointerMove(ev) {
+    // only respond to the active primary pointer
     if (!isPanning || ev.pointerId !== activePointerId || !ev.isPrimary) return;
     const dxScreen = ev.clientX - startX;
     const dyScreen = ev.clientY - startY;
