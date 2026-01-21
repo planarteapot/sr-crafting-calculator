@@ -1001,24 +1001,35 @@ function renderGraph(nodes, links, rootItem) {
   // Nodes
   // ---------------------------------
   for (const node of nodes) {
-    const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
+    const fillColor = node.raw
+      ? "#f4d03f"
+      : MACHINE_COLORS[node.building] || "#95a5a6";
+
     const label = String(node.label || node.id);
 
     const fontSize = 13;
     const padX = 10, padY = 6;
-    const width = Math.max(48, label.length * 7 + padX*2);
-    const height = fontSize + padY*2;
+    const width = Math.max(48, label.length * 7 + padX * 2);
+    const height = fontSize + padY * 2;
+
+    // Machine count shown inside node
+    const machineCount =
+      Number.isFinite(Number(node.machines)) && node.machines > 0
+        ? Math.ceil(node.machines)
+        : "";
 
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0">
+        <!-- label box -->
         <rect
-          x="${node.x - width/2}"
+          x="${node.x - width / 2}"
           y="${node.y - nodeRadius - LABEL_OFFSET - height}"
           width="${width}"
           height="${height}"
           rx="6"
           fill="var(--label-box-fill)"
           stroke="var(--label-box-stroke)" />
+
         <text
           x="${node.x}"
           y="${node.y - nodeRadius - LABEL_OFFSET - height / 2}"
@@ -1029,11 +1040,29 @@ function renderGraph(nodes, links, rootItem) {
           fill="var(--label-text-fill)">
           ${label}
         </text>
-        <circle cx="${node.x}" cy="${node.y}"
+
+        <!-- node circle -->
+        <circle
+          cx="${node.x}"
+          cy="${node.y}"
           r="${nodeRadius}"
           fill="${fillColor}"
           stroke="#2c3e50"
           stroke-width="2"/>
+
+        <!-- machine count inside node -->
+        ${
+          machineCount !== ""
+            ? `
+            <text
+              x="${node.x}"
+              y="${node.y}"
+              class="nodeNumber">
+              ${machineCount}
+            </text>
+            `
+            : ""
+        }
       </g>
     `;
   }
