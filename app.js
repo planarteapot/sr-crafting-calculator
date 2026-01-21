@@ -334,32 +334,31 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /* ===============================
-   renderGraph (adds matching input-side bypass dots)
-   - Uses global shortest helper-dot gap to place bypass dots
-   - For each output bypass dot, finds the consuming column(s) that caused it
-     and places a single input bypass dot in that consuming column at the same spacing
-     (below the top input helper dot) so the bypass is visually paired.
-   - Preserves previous behavior: BBM alignment, smelter left-anchor suppression,
-     final-column right-anchor suppression, node->node raw lines, spines, connectors.
+   renderGraph (input bypass dots placed at same height as output bypass dots)
+   - Full replacement function
+   - Output bypass dots computed as before (global shortestGap above top output helper)
+   - Input bypass dots for consuming columns are placed at the exact same Y as the corresponding output bypass dot
+     (X is still the consumer column's input anchor X so the pair is visually aligned horizontally to their columns)
+   - Preserves all previous behavior: BBM alignment, smelter left-anchor suppression,
+     no right helper for final column, node->node raw lines, spines, connectors, anchor spacing
    =============================== */
 function renderGraph(nodes, links, rootItem) {
   const nodeRadius = 22;
   const ANCHOR_RADIUS = 5;
   const ANCHOR_HIT_RADIUS = 12;
-  const ANCHOR_OFFSET = 18; // spacing from node edge to helper dot
+  const ANCHOR_OFFSET = 18;
   const isDark = isDarkMode();
 
   const BBM_ID = 'Basic Building Material';
   const TARGET_SMELTER_OUTPUTS = ['Calcium Block', 'Titanium Bar', 'Wolfram Bar'];
 
-  // Ensure anchor flags exist and default to true when undefined
+  // Ensure anchor flags exist
   for (const n of nodes) {
     if (typeof n.hasInputAnchor === 'undefined') n.hasInputAnchor = true;
     if (typeof n.hasOutputAnchor === 'undefined') n.hasOutputAnchor = true;
     if (typeof n.hasTopAnchor === 'undefined') n.hasTopAnchor = false;
   }
 
-  // Quick lookup map
   const nodeById = new Map(nodes.map(n => [n.id, n]));
 
   // Align BBM with canonical smelter outputs if present
@@ -378,14 +377,12 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Group nodes by depth
+  // Group nodes by depth and layout alphabetically
   const columns = {};
   for (const node of nodes) {
     if (!columns[node.depth]) columns[node.depth] = [];
     columns[node.depth].push(node);
   }
-
-  // Layout nodes: alphabetical top -> bottom in each column
   for (const [depth, colNodes] of Object.entries(columns)) {
     colNodes.sort((a, b) => (String(a.label || a.id)).localeCompare(String(b.label || b.id), undefined, { sensitivity: 'base' }));
     colNodes.forEach((node, i) => {
@@ -394,7 +391,7 @@ function renderGraph(nodes, links, rootItem) {
     });
   }
 
-  // Compute bounds
+  // Bounds
   const xs = nodes.map(n => n.x);
   const ys = nodes.map(n => n.y);
   const minX = nodes.length ? Math.min(...xs) : 0;
@@ -407,43 +404,37 @@ function renderGraph(nodes, links, rootItem) {
   const contentW = (maxX - minX) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
   const contentH = (maxY - minY) + (nodeRadius * 2) + GRAPH_CONTENT_PAD * 2;
 
-  // Anchor position helpers
+  // Anchor helpers
   function anchorRightPos(node) { return { x: node.x + nodeRadius + ANCHOR_OFFSET, y: node.y }; }
   function anchorLeftPos(node)  { return { x: node.x - nodeRadius - ANCHOR_OFFSET, y: node.y }; }
   function anchorTopPos(node)   { return { x: node.x, y: node.y - nodeRadius - ANCHOR_OFFSET }; }
   function anchorBottomPos(node){ return { x: node.x, y: node.y + nodeRadius + ANCHOR_OFFSET }; }
 
-  // Determine leftmost and rightmost depths
   const minDepth = nodes.length ? Math.min(...nodes.map(n => n.depth)) : 0;
   const maxDepth = nodes.length ? Math.max(...nodes.map(n => n.depth)) : 0;
 
-  // --- Determine which nodes will render which anchors (so we can compute global helper-dot Ys) ---
-  const willRenderAnchors = []; // array of {x,y,side,node}
+  // Determine which anchors will render (so we can compute global helper-dot Ys)
+  const willRenderAnchors = [];
   for (const node of nodes) {
     const hideAllAnchors = (node.raw && node.depth === minDepth);
     const isSmelter = (node.building === 'Smelter');
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
 
-    // left anchor: not for smelters/BBM/leftmost raw
     if (!hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM) {
       const p = anchorLeftPos(node);
       willRenderAnchors.push({ x: p.x, y: p.y, side: 'left', node });
     }
-
-    // right anchor: not for final column
     if (!hideAllAnchors && (node.hasOutputAnchor || isBBM) && node.depth !== maxDepth) {
       const p = anchorRightPos(node);
       willRenderAnchors.push({ x: p.x, y: p.y, side: 'right', node });
     }
-
-    // top anchor: if flagged (non-adjacent consumer)
     if (!hideAllAnchors && node.hasTopAnchor) {
       const p = anchorTopPos(node);
       willRenderAnchors.push({ x: p.x, y: p.y, side: 'top', node });
     }
   }
 
-  // --- Compute the shortest positive vertical distance between any two helper dots in the graph ---
+  // Compute shortest positive vertical gap between any two helper dots
   const uniqueYs = Array.from(new Set(willRenderAnchors.map(a => Math.round(a.y * 100) / 100))).sort((a, b) => a - b);
   let shortestGap;
   if (uniqueYs.length >= 2) {
@@ -457,13 +448,12 @@ function renderGraph(nodes, links, rootItem) {
     shortestGap = nodeRadius + ANCHOR_OFFSET;
   }
 
-  // --- Compute per-depth output bypass dot requirement using the global shortestGap ---
+  // Compute output bypass dots (one per output column when needed)
   const depthsSorted = Object.keys(columns).map(d => Number(d)).sort((a, b) => a - b);
-  const needsOutputBypass = new Map(); // depth -> { x, y, causingConsumers: Set(depths) }
+  const needsOutputBypass = new Map(); // depth -> { x, y, causingConsumers:Set }
 
   for (const depth of depthsSorted) {
     const colNodes = columns[depth] || [];
-    // outputs in this column (exclude leftmost raw nodes and final column nodes)
     const outputs = colNodes.filter(n =>
       !(n.raw && n.depth === minDepth) &&
       (n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) &&
@@ -471,84 +461,66 @@ function renderGraph(nodes, links, rootItem) {
     );
     if (outputs.length === 0) continue;
 
-    // detect any consumer more than one depth away and collect consumer depths
     const consumerDepths = new Set();
     for (const outNode of outputs) {
       for (const link of links) {
         if (link.to !== outNode.id) continue;
         const consumer = nodeById.get(link.from);
         if (!consumer || typeof consumer.depth !== 'number') continue;
-        if ((consumer.depth - outNode.depth) > 1) {
-          consumerDepths.add(consumer.depth);
-        }
+        if ((consumer.depth - outNode.depth) > 1) consumerDepths.add(consumer.depth);
       }
     }
     if (consumerDepths.size === 0) continue;
 
-    // Use the top-most output node in this column to anchor the bypass placement
     const topOutputNode = outputs.reduce((a, b) => (a.y < b.y ? a : b));
     const anchorX = anchorRightPos(topOutputNode).x;
-    const topHelperY = anchorTopPos(topOutputNode).y; // exact Y of per-node top helper dot
-
-    // Place output bypass dot exactly one global shortestGap above the top helper dot
+    const topHelperY = anchorTopPos(topOutputNode).y;
     const bypassY = topHelperY - shortestGap;
 
     needsOutputBypass.set(depth, { x: anchorX, y: bypassY, causingConsumers: consumerDepths });
   }
 
-  // --- Compute matching input-side bypass dots for the consuming columns ---
-  // For each output bypass, place a single input bypass dot in each consuming column (depth)
-  // at the same spacing below that column's top input helper dot (topInputY + shortestGap).
+  // Compute input bypass dots: place at the same Y as the output bypass dot(s)
+  // For each consumer depth referenced by an output bypass, place a single input bypass dot at that consumer column,
+  // using the consumer column's top input anchor X and the output bypass Y (so heights match).
   const needsInputBypass = new Map(); // consumerDepth -> { x, y }
   for (const [outDepth, info] of needsOutputBypass.entries()) {
     for (const consumerDepth of info.causingConsumers) {
-      // find nodes in consumerDepth that have input anchors (exclude leftmost raw)
       const consumerCol = columns[consumerDepth] || [];
       const inputNodes = consumerCol.filter(n => !(n.raw && n.depth === minDepth) && n.hasInputAnchor);
       if (inputNodes.length === 0) continue;
 
-      // pick the top-most input node to anchor the input bypass placement
       const topInputNode = inputNodes.reduce((a, b) => (a.y < b.y ? a : b));
       const inputAnchorX = anchorLeftPos(topInputNode).x;
-      const topInputHelperY = anchorTopPos(topInputNode).y; // top helper dot Y for inputs (top anchor)
-      // Place input bypass dot exactly one global shortestGap below the top input helper dot
-      const inputBypassY = topInputHelperY + shortestGap;
+      const inputBypassY = info.y; // IMPORTANT: same Y as the output bypass dot
 
-      // If multiple outputs map to same consumerDepth, keep the single dot (first wins)
       if (!needsInputBypass.has(consumerDepth)) {
         needsInputBypass.set(consumerDepth, { x: inputAnchorX, y: inputBypassY });
       }
     }
   }
 
-  // --- Build spine SVG fragments (anchors are used by spine logic) ---
+  // Build spines (unchanged logic, uses anchors)
   let spineSvg = '';
   (function buildSpines() {
     for (let i = 0; i < depthsSorted.length; i++) {
       const depth = depthsSorted[i];
       const colNodes = columns[depth] || [];
-
-      // Collect anchor positions for this column (right anchors + top anchors)
       const anchors = [];
       for (const n of colNodes) {
         if (n.raw && n.depth === minDepth) continue;
         if (n.hasTopAnchor) anchors.push(anchorTopPos(n));
         if ((n.hasOutputAnchor || (n.id === BBM_ID || n.label === BBM_ID)) && n.depth !== maxDepth) anchors.push(anchorRightPos(n));
       }
-
       if (anchors.length === 0) continue;
-
       const ysAnch = anchors.map(p => p.y);
       const topAnchorY = Math.min(...ysAnch);
       const bottomAnchorY = Math.max(...ysAnch);
       const spineX = anchors[0].x;
-
       spineSvg += `
         <line class="graph-spine-vertical" x1="${spineX}" y1="${bottomAnchorY}" x2="${spineX}" y2="${topAnchorY}"
               stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
       `;
-
-      // connect to next column's input anchors if present
       if (i + 1 < depthsSorted.length) {
         const nextDepth = depthsSorted[i + 1];
         const nextColNodes = columns[nextDepth] || [];
@@ -573,10 +545,10 @@ function renderGraph(nodes, links, rootItem) {
     }
   })();
 
-  // Build inner SVG: start with spines so they render behind nodes
+  // Build inner SVG
   let inner = spineSvg;
 
-  // --- Edges: draw only raw->Smelter or raw->BBM lines, node-to-node (center->center) ---
+  // Raw->Smelter/BBM node-to-node edges
   for (const link of links) {
     const rawSource = nodeById.get(link.to);
     const consumer = nodeById.get(link.from);
@@ -603,14 +575,10 @@ function renderGraph(nodes, links, rootItem) {
     const isSmelter = (node.building === 'Smelter');
     const isBBM = (node.id === BBM_ID || node.label === BBM_ID);
 
-    // Left anchor: show if allowed and not smelter/BBM and not leftmost raw
     const showLeftAnchor = !hideAllAnchors && node.hasInputAnchor && !isSmelter && !isBBM;
-    // Right anchor: show if allowed and not final output (maxDepth)
     const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || isBBM) && (node.depth !== maxDepth);
-    // Top anchor: show if flagged (non-adjacent consumer)
     const showTopAnchor = !hideAllAnchors && node.hasTopAnchor;
 
-    // Connectors from node edge to anchor dot (visual only)
     if (showLeftAnchor) {
       const startX = node.x - nodeRadius;
       const startY = node.y;
@@ -639,7 +607,6 @@ function renderGraph(nodes, links, rootItem) {
       `;
     }
 
-    // Node markup
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
@@ -660,7 +627,6 @@ function renderGraph(nodes, links, rootItem) {
         </text>
     `;
 
-    // Anchor dots (these are the helper dots)
     if (showLeftAnchor) {
       const a = anchorLeftPos(node);
       inner += `
@@ -692,7 +658,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `</g>`;
   }
 
-  // --- Render output bypass dots (single helper dot per output column when needed) ---
+  // Render output bypass dots
   const bypassFill = isDark ? '#ffffff' : '#2c3e50';
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `
@@ -702,7 +668,7 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-  // --- Render input bypass dots (single helper dot per consuming column when needed) ---
+  // Render input bypass dots at the same Y as their corresponding output bypass dots
   for (const [consumerDepth, pos] of needsInputBypass.entries()) {
     inner += `
       <g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="false">
