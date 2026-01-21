@@ -334,17 +334,11 @@ function buildGraphData(chain, rootItem) {
 })();
 
 /**
- * renderGraph (center-to-center; left/right anchors only; BBM in smelter column;
- * smelter input suppressed; raw nodes off far-left get right-only anchors;
- * visible helper dots are connected to their nodes)
- *
- * - Uses only left/right anchors (no top anchors)
- * - BBM is placed in the smelter column (or fallback smelter outputs)
- * - Smelters do not render input anchors or input-side spines
- * - If a node is raw and not in the far-left column (minDepth), it gets RIGHT-only anchor
- * - Vertical output spines are drawn per-column
- * - All bypass connectors are center-to-center and use identical rounded coordinates
- * - Connectors drawn before anchor groups; stroke-linecap="butt" to avoid cap artifacts
+ * renderGraph
+ * - Consistent color palette for lines, spines, anchors, and bypasses
+ * - Label background "blur box" to keep text readable in light and dark mode
+ * - Left/right anchors only; BBM placed in smelter column; smelter input suppressed;
+ *   raw nodes off far-left get right-only anchors; helper dots connected to nodes
  *
  * Assumes globals: GRAPH_COL_WIDTH, GRAPH_ROW_HEIGHT, GRAPH_CONTENT_PAD,
  * GRAPH_LABEL_OFFSET, MACHINE_COLORS, isDarkMode(), escapeHtml(), getTextColor()
@@ -357,6 +351,17 @@ function renderGraph(nodes, links, rootItem) {
   const isDark = isDarkMode();
 
   const BBM_ID = 'Basic Building Material';
+
+  // Color palette (consistent across all connectors and spines)
+  const LINE_COLOR = isDark ? '#dcdcdc' : '#444444';        // general connector color
+  const SPINE_COLOR = isDark ? '#bdbdbd' : '#666666';       // spines and structural lines
+  const BYPASS_FILL = isDark ? '#ffffff' : '#2c3e50';       // bypass dot fill
+  const RAW_EDGE_COLOR = '#333333';                         // raw node direct edges
+  const NODE_STROKE = '#2c3e50';
+
+  // Label box fills (semi-opaque to ensure readability)
+  const LABEL_BOX_FILL = isDark ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.88)';
+  const LABEL_BOX_STROKE = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
   // rounding helper to avoid sub-pixel mismatches
   function roundCoord(v) { return Math.round(v * 100) / 100; }
@@ -548,7 +553,7 @@ function renderGraph(nodes, links, rootItem) {
       // vertical spine for outputs in this column
       spineSvg += `
         <line class="graph-spine-vertical" x1="${spineX}" y1="${bottomAnchorY}" x2="${spineX}" y2="${topAnchorY}"
-              stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+              stroke="${SPINE_COLOR}" stroke-width="2" stroke-linecap="round" opacity="0.95" />
       `;
 
       // if next column exists, connect top of this spine to the next column's input anchors (left)
@@ -567,11 +572,11 @@ function renderGraph(nodes, links, rootItem) {
           // horizontal from this spine top to next spine X, then vertical down to inputs
           spineSvg += `
             <line class="graph-spine-horizontal" x1="${spineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topAnchorY}"
-                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+                  stroke="${SPINE_COLOR}" stroke-width="2" stroke-linecap="round" opacity="0.95" />
             <line class="graph-spine-horizontal" x1="${nextSpineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topInY}"
-                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+                  stroke="${SPINE_COLOR}" stroke-width="2" stroke-linecap="round" opacity="0.95" />
             <line class="graph-spine-vertical" x1="${nextSpineX}" y1="${topInY}" x2="${nextSpineX}" y2="${Math.max(...nextInputs.map(p => p.y))}"
-                  stroke="#666" stroke-width="2" stroke-linecap="round" opacity="0.95" />
+                  stroke="${SPINE_COLOR}" stroke-width="2" stroke-linecap="round" opacity="0.95" />
           `;
         }
       }
@@ -579,7 +584,16 @@ function renderGraph(nodes, links, rootItem) {
   })();
 
   // Build inner SVG: start with spines so they render behind everything
-  let inner = spineSvg;
+  // include a small defs block for label blur (applied to the label box)
+  let inner = `
+    <defs>
+      <filter id="labelBlur" x="-30%" y="-30%" width="160%" height="160%">
+        <feGaussianBlur stdDeviation="2" result="b" />
+        <feComposite in="b" in2="SourceGraphic" operator="over" />
+      </filter>
+    </defs>
+    ${spineSvg}
+  `;
 
   // Raw->Smelter/BBM node-to-node edges (unchanged)
   for (const link of links) {
@@ -592,7 +606,7 @@ function renderGraph(nodes, links, rootItem) {
         <line class="graph-edge graph-edge-raw" data-from="${escapeHtml(rawSource.id)}" data-to="${escapeHtml(consumer.id)}"
               x1="${rawSource.x}" y1="${rawSource.y}"
               x2="${consumer.x}" y2="${consumer.y}"
-              stroke="#333" stroke-width="2.6" stroke-linecap="round" />
+              stroke="${RAW_EDGE_COLOR}" stroke-width="2.6" stroke-linecap="round" />
       `;
     }
   }
@@ -603,7 +617,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `
       <line class="bypass-to-spine bypass-output-connector" data-depth="${depth}"
             x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.helperCenter.y}"
-            stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
+            stroke="${LINE_COLOR}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
     `;
   }
 
@@ -612,7 +626,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `
       <line class="bypass-to-spine bypass-input-connector" data-depth="${consumerDepth}"
             x1="${pos.x}" y1="${pos.helperCenter.y}" x2="${pos.x}" y2="${pos.y}"
-            stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
+            stroke="${LINE_COLOR}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
     `;
   }
 
@@ -624,7 +638,7 @@ function renderGraph(nodes, links, rootItem) {
       inner += `
         <line class="bypass-connector" data-from-depth="${outDepth}" data-to-depth="${consumerDepth}"
               x1="${outInfo.x}" y1="${outInfo.y}" x2="${inPos.x}" y2="${inPos.y}"
-              stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.6" stroke-linecap="round" opacity="0.95" />
+              stroke="${LINE_COLOR}" stroke-width="1.6" stroke-linecap="round" opacity="0.95" />
       `;
     }
   }
@@ -646,7 +660,7 @@ function renderGraph(nodes, links, rootItem) {
         <line class="node-to-anchor node-to-left" data-node="${escapeHtml(node.id)}"
               x1="${roundCoord(node.x - nodeRadius)}" y1="${node.y}"
               x2="${a.x}" y2="${a.y}"
-              stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
+              stroke="${LINE_COLOR}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
       `;
     }
 
@@ -657,7 +671,7 @@ function renderGraph(nodes, links, rootItem) {
         <line class="node-to-anchor node-to-right" data-node="${escapeHtml(node.id)}"
               x1="${roundCoord(node.x + nodeRadius)}" y1="${node.y}"
               x2="${a.x}" y2="${a.y}"
-              stroke="${isDark ? '#ddd' : '#444'}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
+              stroke="${LINE_COLOR}" stroke-width="1.4" stroke-linecap="butt" opacity="0.95" />
       `;
     }
   }
@@ -665,8 +679,9 @@ function renderGraph(nodes, links, rootItem) {
   // --- Nodes, connectors, and anchor dots (draw anchors after connectors so dots sit on top) ---
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
-    const strokeColor = "#2c3e50";
+    const strokeColor = NODE_STROKE;
     const textColor = getTextColor(fillColor);
+    const labelText = String(node.label || node.id).trim();
     const labelY = node.y - GRAPH_LABEL_OFFSET;
 
     const hideAllAnchors = (node.raw && node.depth === minDepth);
@@ -678,13 +693,26 @@ function renderGraph(nodes, links, rootItem) {
     const showLeftAnchor = !hideAllAnchors && !rawRightOnly && node.hasInputAnchor && !isSmelter && !isBBM;
     const showRightAnchor = !hideAllAnchors && (node.hasOutputAnchor || rawRightOnly || isBBM) && (node.depth !== maxDepth);
 
+    // Label background box sizing (approximate; keeps text readable)
+    const approxCharWidth = 7; // px per character (approx for font-size 13)
+    const labelFontSize = 13;
+    const labelPaddingX = 8;
+    const labelPaddingY = 6;
+    const labelBoxWidth = Math.max(40, Math.ceil(labelText.length * approxCharWidth) + labelPaddingX * 2);
+    const labelBoxHeight = labelFontSize + labelPaddingY;
+    const labelBoxX = roundCoord(node.x - labelBoxWidth / 2);
+    const labelBoxY = roundCoord(labelY - labelBoxHeight + 2); // slightly above the text baseline
+
     // Node markup
     inner += `
       <g class="graph-node" data-id="${escapeHtml(node.id)}" tabindex="0" role="button" aria-label="${escapeHtml(node.label)}" style="outline:none;">
+        <!-- label background box with subtle blur to improve readability -->
+        <rect class="label-box" x="${labelBoxX}" y="${labelBoxY}" width="${labelBoxWidth}" height="${labelBoxHeight}"
+              rx="6" ry="6" fill="${LABEL_BOX_FILL}" stroke="${LABEL_BOX_STROKE}" stroke-width="0.6" filter="url(#labelBlur)" pointer-events="none" />
         <text class="nodeLabel" x="${node.x}" y="${labelY}"
-              text-anchor="middle" font-size="13" font-weight="700"
+              text-anchor="middle" font-size="${labelFontSize}" font-weight="700"
               fill="${textColor}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="0.6" paint-order="stroke" pointer-events="none">
-          ${escapeHtml(node.label)}
+          ${escapeHtml(labelText)}
         </text>
 
         <circle class="graph-node-circle" data-id="${escapeHtml(node.id)}" cx="${node.x}" cy="${node.y}" r="${nodeRadius}"
@@ -723,18 +751,17 @@ function renderGraph(nodes, links, rootItem) {
   }
 
   // Render bypass dots (on top of connectors)
-  const bypassFill = isDark ? '#ffffff' : '#2c3e50';
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `
       <g class="bypass-dot bypass-output" data-depth="${depth}" transform="translate(${info.x},${info.y})" aria-hidden="false">
-        <circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${bypassFill}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+        <circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${BYPASS_FILL}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
       </g>
     `;
   }
   for (const [consumerDepth, pos] of needsInputBypass.entries()) {
     inner += `
       <g class="bypass-dot bypass-input" data-depth="${consumerDepth}" transform="translate(${pos.x},${pos.y})" aria-hidden="false">
-        <circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${bypassFill}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
+        <circle cx="0" cy="0" r="${ANCHOR_RADIUS}" fill="${BYPASS_FILL}" stroke="${isDark ? '#000' : '#fff'}" stroke-width="1.2" />
       </g>
     `;
   }
