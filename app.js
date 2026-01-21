@@ -760,6 +760,10 @@ function renderGraph(nodes, links, rootItem) {
 
   const LABEL_OFFSET = 6;
 
+  const BYPASS_RADIUS = 5;
+  const BYPASS_Y_OFFSET = 34;
+  const BYPASS_X_INSET = 10;
+
   function roundCoord(v) { return Math.round(v * 100) / 100; }
 
   function anchorRightPos(node) {
@@ -810,6 +814,28 @@ function renderGraph(nodes, links, rootItem) {
       node.y = roundCoord(i * GRAPH_ROW_HEIGHT + 100);
     });
   }
+
+  // ---------------------------------
+  // Bypass detection (DOTS ONLY)
+  // ---------------------------------
+  const bypassOutputDepths = new Set();
+  const bypassInputDepths = new Set();
+
+  for (const link of links) {
+    const from = nodes.find(n => n.id === link.source);
+    const to   = nodes.find(n => n.id === link.target);
+    if (!from || !to) continue;
+
+    if (to.depth - from.depth > 1) {
+      bypassOutputDepths.add(from.depth);
+      bypassInputDepths.add(to.depth);
+    }
+  }
+
+  const bypassExtraTop =
+    (bypassOutputDepths.size || bypassInputDepths.size)
+      ? BYPASS_Y_OFFSET + BYPASS_RADIUS + 12
+      : 0;
 
   // ---------------------------------
   // ViewBox
@@ -874,23 +900,6 @@ function renderGraph(nodes, links, rootItem) {
       `;
     }
   }
-
-    // ---------------------------------
-    // Bypass detection (DOTS ONLY)
-    // ---------------------------------
-    const bypassOutputDepths = new Set();
-    const bypassInputDepths = new Set();
-
-    for (const link of links) {
-      const from = nodes.find(n => n.id === link.source);
-      const to   = nodes.find(n => n.id === link.target);
-      if (!from || !to) continue;
-
-      if (to.depth - from.depth > 1) {
-        bypassOutputDepths.add(from.depth);
-        bypassInputDepths.add(to.depth);
-      }
-    }
 
     // top-most node per column
     const topBypassNodeByDepth = {};
@@ -1042,13 +1051,6 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-    // ---------------------------------
-    // Bypass helper dots (NO LINES)
-    // ---------------------------------
-    const BYPASS_RADIUS = 5;
-    const BYPASS_Y_OFFSET = 34;
-    const BYPASS_X_INSET = 10;
-
     // Output-side bypass dots (above right helpers)
     for (const depth of bypassOutputDepths) {
       const node = topBypassNodeByDepth[depth];
@@ -1088,17 +1090,6 @@ function renderGraph(nodes, links, rootItem) {
         />
       `;
     }
-
-    // ---------------------------------
-    // Extra top padding for bypass dots
-    // ---------------------------------
-    const BYPASS_RADIUS = 5;
-    const BYPASS_Y_OFFSET = 34;
-
-    const bypassExtraTop =
-      (bypassOutputDepths.size || bypassInputDepths.size)
-        ? BYPASS_Y_OFFSET + BYPASS_RADIUS + 12
-        : 0;
 
   // ---------------------------------
   // Nodes
