@@ -1101,15 +1101,12 @@ function renderTable(chainObj, rootItem, rate) {
   const nodes = graph.nodes || [];
   const links = graph.links || [];
 
-  // Map nodes by id for quick lookup
-  const nodeById = new Map((nodes || []).map(n => [n.id, n]));
-
   // Compute depths using existing helper
   const depths = typeof computeDepthsFromTiers === 'function'
     ? computeDepthsFromTiers(chain, rootItem)
     : {};
 
-  // Group non-raw chain items by computed depth (level)
+  // Collect non-raw items grouped by their computed depth
   const levelGroups = {};
   for (const [item, data] of Object.entries(chain || {})) {
     if (data && data.raw) continue; // skip raw items entirely
@@ -1118,10 +1115,38 @@ function renderTable(chainObj, rootItem, rate) {
     levelGroups[depth].push([item, data]);
   }
 
-  // Sort levels descending (highest first)
-  const sortedLevels = Object.keys(levelGroups).map(Number).sort((a,b) => b - a);
+  // If there are no non-raw items, ensure we still render something sensible
+  const uniqueDepths = Object.keys(levelGroups).map(Number);
+  if (uniqueDepths.length === 0) {
+    // Nothing to show in table (all raw or empty chain)
+    const graphHTML = renderGraph(nodes, links, rootItem);
+    const graphArea = document.getElementById("graphArea");
+    if (!graphArea) return;
+    const prevWrapper = graphArea.querySelector(".graphWrapper");
+    if (prevWrapper && prevWrapper._teardownGraphZoom) {
+      try { prevWrapper._teardownGraphZoom(); } catch (e) { /* ignore */ }
+    }
+    ensureResetButton();
+    graphArea.innerHTML = graphHTML;
+    const wrapper = graphArea.querySelector(".graphWrapper");
+    const resetBtn = document.querySelector('#resetViewBtn');
+    setupGraphZoom(wrapper, { autoFit: true, resetButtonEl: resetBtn });
+    attachNodePointerHandlers(wrapper);
 
-  // Build graph HTML area first
+    const out = document.getElementById("outputArea");
+    if (out) out.innerHTML = `<h2>Production chain for ${escapeHtml(String(rate))} / min of ${escapeHtml(rootItem)}</h2><p>No non-raw items to display in the table.</p>`;
+    return;
+  }
+
+  // Normalize depths to sequential level numbers starting at 0 (lowest depth -> Level 0)
+  const depthsAsc = uniqueDepths.slice().sort((a,b) => a - b); // ascending
+  const depthToLevelIndex = {};
+  depthsAsc.forEach((d, idx) => { depthToLevelIndex[d] = idx; });
+
+  // Render order: visually show highest depth first (descending)
+  const sortedDepthsDesc = depthsAsc.slice().sort((a,b) => b - a);
+
+  // Build graph HTML area first (so graph renders above/beside table as before)
   const graphHTML = renderGraph(nodes, links, rootItem);
 
   const graphArea = document.getElementById("graphArea");
@@ -1158,12 +1183,13 @@ function renderTable(chainObj, rootItem, rate) {
       <tbody>
   `;
 
-  // Render levels from highest down to 0
-  for (const level of sortedLevels) {
-    const rows = levelGroups[level] || [];
+  // Render levels from highest to lowest, but label them using normalized Level indices
+  for (const depth of sortedDepthsDesc) {
+    const rows = levelGroups[depth] || [];
     if (!rows.length) continue;
 
-    html += `<tr><td colspan="7"><strong>--- Level ${level} ---</strong></td></tr>`;
+    const levelLabel = depthToLevelIndex[depth] ?? 0;
+    html += `<tr><td colspan="7"><strong>--- Level ${levelLabel} ---</strong></td></tr>`;
 
     // Sort items alphabetically within the level for stable ordering
     rows.sort((a,b) => a[0].localeCompare(b[0], undefined, { sensitivity: 'base' }));
