@@ -1045,12 +1045,12 @@ function renderGraph(nodes, links, rootItem) {
       <marker id="spineArrowUp"
               viewBox="0 0 8 8"
               refX="4"
-              refY="4"
-              markerWidth="6"
-              markerHeight="6"
+              refY="8"
+              markerWidth="8"
+              markerHeight="8"
               orient="auto"
-              markerUnits="strokeWidth">
-        <path d="M0 6 L4 2 L8 6 Z" fill="var(--spine-color)" />
+              markerUnits="userSpaceOnUse">
+        <path d="M0 6 L4 0 L8 6 Z" fill="var(--spine-color)" />
       </marker>
 
       <!-- Label backdrop -->
