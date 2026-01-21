@@ -1069,6 +1069,8 @@ function renderGraph(nodes, links, rootItem) {
   // BYPASS HELPER DOTS (TRUE HELPERS)
   // ---------------------------------
 
+  const BYPASS_VERTICAL_OFFSET = 60;
+
   // Output-side bypass helper dots
   for (const depth of bypassOutputDepths) {
     const h = rightTopByDepth[depth];
@@ -1077,7 +1079,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `
       <circle
         cx="${h.x}"
-        cy="${h.y - BYPASS_Y_OFFSET}"
+        cy="${h.y - BYPASS_VERTICAL_OFFSET}"
         r="${BYPASS_RADIUS}"
         fill="var(--bypass-fill)"
         stroke="var(--bypass-stroke)"
@@ -1094,7 +1096,7 @@ function renderGraph(nodes, links, rootItem) {
     inner += `
       <circle
         cx="${h.x}"
-        cy="${h.y - BYPASS_Y_OFFSET}"
+        cy="${h.y - BYPASS_VERTICAL_OFFSET}"
         r="${BYPASS_RADIUS}"
         fill="var(--bypass-fill)"
         stroke="var(--bypass-stroke)"
