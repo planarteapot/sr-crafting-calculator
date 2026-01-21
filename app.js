@@ -858,15 +858,19 @@ function renderGraph(nodes, links, rootItem) {
   shortestGap = roundCoord(shortestGap);
 
   // Helper: return an SVG group string that draws a filled triangle arrow
-  // centered at the midpoint of (x1,y1)-(x2,y2) and rotated to the line angle.
+  // placed at fraction t along the line (0..1), rotated to the line angle.
   // color: fill color; size: half-width of the arrow in px (default 6).
-  function arrowAtMidpoint(x1, y1, x2, y2, color, size = 6) {
-    const mx = roundCoord((x1 + x2) / 2);
-    const my = roundCoord((y1 + y2) / 2);
+  function arrowAtFraction(x1, y1, x2, y2, color, size = 6, t = 0.5, perpOffset = 0) {
+    // point at fraction t along the segment
+    const mx = roundCoord(x1 + (x2 - x1) * t);
+    const my = roundCoord(y1 + (y2 - y1) * t);
     const angle = Math.atan2(y2 - y1, x2 - x1) * 180 / Math.PI;
+    // perpendicular offset (px) applied after rotation
     const h = Math.max(2, Math.round(size * 0.625));
     const path = `M ${-size} ${-h} L ${size} 0 L ${-size} ${h} Z`;
-    return `<g class="line-arrow" transform="translate(${mx},${my}) rotate(${angle})"><path d="${path}" fill="${color}" /></g>`;
+    // If perpOffset is non-zero, translate along the rotated Y axis by perpOffset
+    // We'll apply a small translate after rotate: translate(mx, my) rotate(angle) translate(0, perpOffset)
+    return `<g class="line-arrow" transform="translate(${mx},${my}) rotate(${angle}) translate(0,${perpOffset})"><path d="${path}" fill="${color}" /></g>`;
   }
 
   // Helper: returns true if the given input node itself has a producer at least
@@ -936,8 +940,9 @@ function renderGraph(nodes, links, rootItem) {
   window._graphNodes = nodes;
   window._graphLinks = links;
 
-  // Build spines
+  // Build spines and also queue arrows along the spines to indicate flow direction
   let spineSvg = '';
+  const spineArrows = []; // temporary queue for spine arrows (we'll merge into arrowFragments later)
   for (let i=0;i<depthsSorted.length;i++){
     const depth = depthsSorted[i];
     const colNodes = columns[depth] || [];
@@ -953,7 +958,12 @@ function renderGraph(nodes, links, rootItem) {
     const topAnchorY = Math.min(...ysAnch);
     const bottomAnchorY = Math.max(...ysAnch);
     const spineX = outputAnchors[0].x;
+
+    // Vertical spine (from bottomAnchorY up to topAnchorY)
     spineSvg += `<line class="graph-spine-vertical" x1="${spineX}" y1="${bottomAnchorY}" x2="${spineX}" y2="${topAnchorY}" stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}" stroke-width="2" />`;
+    // Arrow along vertical spine pointing upward (from outputs toward the horizontal connector)
+    spineArrows.push(arrowAtFraction(spineX, bottomAnchorY, spineX, topAnchorY, isDarkMode() ? '#bdbdbd' : '#666666', 5, 0.55, 0));
+
     if (i+1 < depthsSorted.length) {
       const nextDepth = depthsSorted[i+1];
       const nextColNodes = columns[nextDepth] || [];
@@ -965,9 +975,21 @@ function renderGraph(nodes, links, rootItem) {
       if (nextInputs.length) {
         const topInY = Math.min(...nextInputs.map(p=>p.y));
         const nextSpineX = nextInputs[0].x;
+
+        // Horizontal spine from current spineX to nextSpineX at topAnchorY
         spineSvg += `<line class="graph-spine-horizontal" x1="${spineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topAnchorY}" stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}" stroke-width="2" />`;
+        // Arrow along horizontal spine pointing right (from outputs toward next column inputs)
+        spineArrows.push(arrowAtFraction(spineX, topAnchorY, nextSpineX, topAnchorY, isDarkMode() ? '#bdbdbd' : '#666666', 5, 0.6, 0));
+
+        // Vertical spine on next column from topAnchorY down to topInY
         spineSvg += `<line class="graph-spine-horizontal" x1="${nextSpineX}" y1="${topAnchorY}" x2="${nextSpineX}" y2="${topInY}" stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}" stroke-width="2" />`;
+        // Arrow along this vertical segment pointing downward (toward inputs)
+        spineArrows.push(arrowAtFraction(nextSpineX, topAnchorY, nextSpineX, topInY, isDarkMode() ? '#bdbdbd' : '#666666', 5, 0.55, 0));
+
+        // Final vertical spine segment from topInY down to the bottom-most input anchor
         spineSvg += `<line class="graph-spine-vertical" x1="${nextSpineX}" y1="${topInY}" x2="${nextSpineX}" y2="${Math.max(...nextInputs.map(p=>p.y))}" stroke="${isDarkMode() ? '#bdbdbd' : '#666666'}" stroke-width="2" />`;
+        // Arrow along this final vertical segment pointing downward
+        spineArrows.push(arrowAtFraction(nextSpineX, topInY, nextSpineX, Math.max(...nextInputs.map(p=>p.y)), isDarkMode() ? '#bdbdbd' : '#666666', 5, 0.55, 0));
       }
     }
   }
@@ -1020,7 +1042,8 @@ function renderGraph(nodes, links, rootItem) {
 
       // Draw the line and queue a midpoint arrow fragment (arrows are drawn later on top)
       inner += `<line class="graph-edge direct-node-line" data-from="${escapeHtml(src.id)}" data-to="${escapeHtml(dst.id)}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" />`;
-      arrowFragments.push(arrowAtMidpoint(x1, y1, x2, y2, stroke, 7));
+      // place arrow slightly toward the destination so overlapping midpoints separate
+      arrowFragments.push(arrowAtFraction(x1, y1, x2, y2, stroke, 7, 0.58, 0));
     }
   })();
 
@@ -1051,12 +1074,16 @@ function renderGraph(nodes, links, rootItem) {
     }
   }
 
-  // Bypass connectors to/from spines (verticals) - no arrows on these short vertical helper lines
+  // Bypass connectors to/from spines (verticals) - now include arrows to show flow along the spine
   for (const [depth, info] of needsOutputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-output-connector" data-depth="${depth}" x1="${info.x}" y1="${info.y}" x2="${info.x}" y2="${info.helperCenter.y}" stroke="${defaultLineColor}" stroke-width="1.4" />`;
+    // arrow pointing from bypass dot toward the spine helper center (flow direction)
+    arrowFragments.push(arrowAtFraction(info.x, info.y, info.x, info.helperCenter.y, defaultLineColor, 5, 0.6, 0));
   }
   for (const [consumerDepth, pos] of needsInputBypass.entries()) {
     inner += `<line class="bypass-to-spine bypass-input-connector" data-depth="${consumerDepth}" x1="${pos.x}" y1="${pos.helperCenter.y}" x2="${pos.x}" y2="${pos.y}" stroke="${defaultLineColor}" stroke-width="1.4" />`;
+    // arrow pointing from spine toward the bypass input dot (flow direction)
+    arrowFragments.push(arrowAtFraction(pos.x, pos.helperCenter.y, pos.x, pos.y, defaultLineColor, 5, 0.6, 0));
   }
 
   // Bypass diagonal connectors (output -> input). Ensure only one connector/arrow per unique pair.
@@ -1070,11 +1097,13 @@ function renderGraph(nodes, links, rootItem) {
       emittedBypassPairs.add(pairKey);
 
       inner += `<line class="bypass-connector" data-from-depth="${outDepth}" data-to-depth="${consumerDepth}" x1="${outInfo.x}" y1="${outInfo.y}" x2="${inPos.x}" y2="${inPos.y}" stroke="${defaultLineColor}" stroke-width="1.4" />`;
-      // Queue arrow fragment for later so it renders on top of nodes and helper dots
-      arrowFragments.push(arrowAtMidpoint(outInfo.x, outInfo.y, inPos.x, inPos.y, defaultLineColor, 6));
+      // Arrow slightly toward the input so overlapping midpoints separate
+      arrowFragments.push(arrowAtFraction(outInfo.x, outInfo.y, inPos.x, inPos.y, defaultLineColor, 6, 0.6, 0));
     }
   }
 
+  // Append spine arrows (so they render above the spine lines) and then other arrow fragments
+  if (spineArrows.length) inner += spineArrows.join('');
   // Node visuals (labels, circles, numbers)
   for (const node of nodes) {
     const fillColor = node.raw ? "#f4d03f" : MACHINE_COLORS[node.building] || "#95a5a6";
