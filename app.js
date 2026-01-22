@@ -520,8 +520,6 @@ function ensureResetButton() {
     if (resizeTimer) clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => adjustGraphTopPadding(), 80);
   }
-  window.removeEventListener('resize', onResize);
-  window.addEventListener('resize', onResize);
 
   return btn;
 }
@@ -671,12 +669,12 @@ function setupGraphZoom(containerEl, { autoFit = true, resetButtonEl = null } = 
     applyTransform();
   }
 
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      computeAutoFit();
-      showToast("View reset");
-    });
-  }
+   if (resetBtn) {
+     resetBtn.onclick = () => {
+       computeAutoFit();
+       showToast("View reset");
+     };
+   }
 
   if (autoFit) requestAnimationFrame(() => computeAutoFit());
   else applyTransform();
