@@ -1133,31 +1133,70 @@ function renderGraph(nodes, links, rootItem) {
     `;
   }
 
-  // ---------------------------------
-  // Connect bypass dots to vertical spines
-  // ---------------------------------
-  for (const d of bypassDots) {
-    const spine =
-      d.side === 'out'
-        ? rightTopByDepth[d.depth]
-        : leftTopByDepth[d.depth];
+    // ---------------------------------
+    // Connect bypass dots to vertical spines (WITH ARROWS)
+    // ---------------------------------
+    for (const d of bypassDots) {
+      const spine =
+        d.side === 'out'
+          ? rightTopByDepth[d.depth]
+          : leftTopByDepth[d.depth];
 
-    if (!spine) continue;
+      if (!spine) continue;
 
-    inner += `
-      <line
-        x1="${d.x}"
-        y1="${d.y}"
-        x2="${spine.x}"
-        y2="${spine.y}"
-        stroke="${defaultLineColor}"
-        stroke-width="1.6"
-      />
-    `;
-  }
+      inner += `
+        <line
+          x1="${d.x}"
+          y1="${d.y}"
+          x2="${spine.x}"
+          y2="${spine.y}"
+          stroke="${defaultLineColor}"
+          stroke-width="1.6"
+        />
+      `;
+
+      const midY = (d.y + spine.y) / 2;
+
+      // OUTPUT side → arrow UP (same as output spines)
+      if (d.side === 'out') {
+        const arrowY =
+          midY +
+          ARROW_GAP_FROM_LABEL -
+          ARROW_CENTER_ADJUST -
+          UP_ARROW_EXTRA_LIFT;
+
+        inner += `
+          <polygon
+            points="
+              ${d.x},${arrowY - ARROW_HEIGHT}
+              ${d.x - ARROW_HALF_WIDTH},${arrowY}
+              ${d.x + ARROW_HALF_WIDTH},${arrowY}
+            "
+            fill="${defaultLineColor}" />
+        `;
+      }
+
+      // INPUT side → arrow DOWN (same as input spines)
+      if (d.side === 'in') {
+        const arrowY =
+          midY -
+          ARROW_CENTER_ADJUST -
+          ARROW_GAP_FROM_LABEL;
+
+        inner += `
+          <polygon
+            points="
+              ${d.x},${arrowY + ARROW_HEIGHT}
+              ${d.x - ARROW_HALF_WIDTH},${arrowY}
+              ${d.x + ARROW_HALF_WIDTH},${arrowY}
+            "
+            fill="${defaultLineColor}" />
+        `;
+      }
+    }
 
     // ---------------------------------
-    // Horizontal bypass rail (dot-to-dot only)
+    // Horizontal bypass rail (dot-to-dot with arrows)
     // ---------------------------------
     const topBypassDots = bypassDots
       .slice()
@@ -1179,6 +1218,18 @@ function renderGraph(nodes, links, rootItem) {
           stroke="${defaultLineColor}"
           stroke-width="1.6"
         />
+      `;
+
+      const midX = (a.x + b.x) / 2;
+
+      inner += `
+        <polygon
+          points="
+            ${midX + H_ARROW_WIDTH},${a.y}
+            ${midX},${a.y - H_ARROW_HALF_HEIGHT}
+            ${midX},${a.y + H_ARROW_HALF_HEIGHT}
+          "
+          fill="${defaultLineColor}" />
       `;
     }
 
