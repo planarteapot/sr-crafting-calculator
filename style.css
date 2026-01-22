@@ -1,105 +1,145 @@
-/* ============================
-   Full stylesheet — centered node numbers
-   ============================ */
+:root {
+/* Graph / label variables (used by renderGraph SVG via var(--...)) */
+--line-color: #444444;
+--spine-color: #666666;
+--raw-edge-color: #333333;
+--label-box-fill: rgba(255,255,255,0.92);
+--label-box-stroke: rgba(0,0,0,0.06);
+--label-text-fill: #111111;
+--label-text-stroke: #ffffff;
+--label-text-stroke-width: 0.6;
+--anchor-dot-fill: #2c3e50;
+--anchor-dot-stroke: #ffffff;
+--bypass-fill: #2c3e50;
+--bypass-stroke: #ffffff;
 
-/* ============================
-   Base Layout
-   ============================ */
-body {
-  font-family: Arial, Helvetica, sans-serif;
-  margin: 20px;
-  background: #f5f5f5;
-  color: #222;
-  transition: background 0.25s ease, color 0.25s ease;
+/* UI colors */
+--panel-bg: #fff;
+--text: #111;
+--muted-border: #cfcfcf;
+--accent: #72a4f2;
+}
+
+/* Dark theme overrides (toggle by adding .dark to <html> or <body>) */
+:root.dark,
+body.dark {
+--line-color: #dcdcdc;
+--spine-color: #bdbdbd;
+--raw-edge-color: #333333;
+--label-box-fill: rgba(0,0,0,0.88);
+--label-box-stroke: rgba(255,255,255,0.06);
+--label-text-fill: #ffffff;
+--label-text-stroke: #000000;
+--label-text-stroke-width: 1.0;
+--anchor-dot-fill: #ffffff;
+--anchor-dot-stroke: #000000;
+--bypass-fill: #ffffff;
+--bypass-stroke: #000000;
+
+--panel-bg: #111827;
+--text: #e6eef8;
+--muted-border: #2b3440;
+--accent: #4aa3ff;
 }
 
 /* ============================
-   Header / Banner
-   ============================ */
+  Base Layout
+  ============================ */
+body {
+font-family: Arial, Helvetica, sans-serif;
+margin: 20px;
+background: #f5f5f5;
+color: var(--text, #222);
+transition: background 0.25s ease, color 0.25s ease;
+}
+
+/* ============================
+  Header / Banner
+  ============================ */
 header {
-  position: relative;
-  overflow: hidden;
-  width: 100%;
-  height: 160px;
-  background-image: url('data/SRCC_Banner_2.png');
-  background-position: center 20%;
-  background-size: cover;
-  background-repeat: no-repeat;
-  background-color: #1a0a05;
-  box-shadow: inset 0 0 80px rgba(0,0,0,0.6);
+position: relative;
+overflow: hidden;
+width: 100%;
+height: 160px;
+background-image: url('data/SRCC_Banner_2.png');
+background-position: center 20%;
+background-size: cover;
+background-repeat: no-repeat;
+background-color: #1a0a05;
+box-shadow: inset 0 0 80px rgba(0,0,0,0.6);
 }
 #headerBanner { display: none; }
 header > *:not(#headerBanner) { position: absolute; z-index: 2; }
 
 #logoBox {
-  top: 50%;
-  left: 20px;
-  transform: translateY(-50%);
-  background: rgba(0,0,0,0.65);
-  padding: 8px 12px;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255,255,255,0.12);
-  backdrop-filter: blur(4px);
+top: 50%;
+left: 20px;
+transform: translateY(-50%);
+background: rgba(0,0,0,0.65);
+padding: 8px 12px;
+border-radius: 6px;
+display: inline-flex;
+align-items: center;
+justify-content: center;
+border: 1px solid rgba(255,255,255,0.12);
+backdrop-filter: blur(4px);
 }
 #siteLogo { height: 45px; width: auto; display: block; }
 #titleBox { top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; }
 #titleBox img { height: 70px; object-fit: contain; }
 
 #darkModeToggle {
-  top: 50%;
-  right: 20px;
-  transform: translateY(-50%);
-  padding: 8px 16px;
-  cursor: pointer;
-  border: 1px solid #444;
-  background: rgba(221,221,221,0.9);
-  border-radius: 4px;
-  font-weight: 700;
-  transition: all 0.2s ease;
+top: 50%;
+right: 20px;
+transform: translateY(-50%);
+padding: 8px 16px;
+cursor: pointer;
+border: 1px solid #444;
+background: rgba(221,221,221,0.9);
+border-radius: 4px;
+font-weight: 700;
+transition: all 0.2s ease;
 }
 #darkModeToggle:hover { transform: translateY(-50%) scale(1.03); background: #fff; }
 
 @media (max-width: 480px) {
-  #logoBox { left: 10px; padding: 4px; }
-  #darkModeToggle { right: 10px; padding: 6px 10px; font-size: 12px; }
-  #titleBox img { height: 50px; }
+#logoBox { left: 10px; padding: 4px; }
+#darkModeToggle { right: 10px; padding: 6px 10px; font-size: 12px; }
+#titleBox img { height: 50px; }
 }
 
 /* Info bubble button */
 .info-bubble {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-right: 8px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: 1px solid var(--muted-border, #cfcfcf);
-  background: var(--panel-bg, #fff);
-  color: var(--text, #111);
-  font-weight: 600;
-  cursor: pointer;
-  transition: background .12s, transform .08s;
+display: inline-flex;
+align-items: center;
+justify-content: center;
+margin-right: 8px;
+padding: 6px 10px;
+border-radius: 6px;
+border: 1px solid var(--muted-border);
+background: var(--panel-bg);
+color: var(--text);
+font-weight: 600;
+cursor: pointer;
+transition: background .12s, transform .08s;
 }
-.info-bubble:focus { outline: 2px solid var(--accent, #72a4f2); transform: translateY(-1px); }
+.info-bubble:focus { outline: 2px solid var(--accent); transform: translateY(-1px); }
 
 /* Info panel */
 .info-panel {
-  position: absolute;
-  z-index: 1200;
-  width: 320px;
-  max-width: calc(100% - 32px);
-  padding: 14px;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-  background: var(--panel-bg, #fff);
-  color: var(--text, #111);
-  border: 1px solid var(--muted-border, #e6e6e6);
-  display: none;
-  font-size: 14px;
-  line-height: 1.4;
+position: absolute;
+z-index: 1200;
+width: 320px;
+max-width: calc(100% - 32px);
+padding: 14px;
+border-radius: 8px;
+box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+background: var(--panel-bg);
+color: var(--text);
+border: 1px solid var(--muted-border);
+display: none;
+font-size: 14px;
+line-height: 1.4;
 }
 
 /* Visible state */
@@ -107,182 +147,195 @@ header > *:not(#headerBanner) { position: absolute; z-index: 2; }
 
 /* Close button */
 .info-close {
-  margin-top: 10px;
-  padding: 6px 10px;
-  border-radius: 6px;
-  border: none;
-  background: var(--accent, #72a4f2);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
+margin-top: 10px;
+padding: 6px 10px;
+border-radius: 6px;
+border: none;
+background: var(--accent);
+color: #fff;
+cursor: pointer;
+font-weight: 600;
 }
 
 /* Info panel link styling */
 .info-panel a {
-  color: var(--accent, #72a4f2);
-  text-decoration: underline;
-  font-weight: 600;
+color: var(--accent);
+text-decoration: underline;
+font-weight: 600;
 }
 
 /* Small responsive tweak: keep panel readable on narrow screens */
 @media (max-width: 520px) {
-  .info-panel { width: calc(100% - 24px); left: 12px !important; right: 12px !important; }
-}
-
-/* Dark mode variables example (if you toggle a .dark class on body) */
-body.dark {
-  --panel-bg: #111827;
-  --text: #e6eef8;
-  --muted-border: #2b3440;
-  --accent: #4aa3ff;
+.info-panel { width: calc(100% - 24px); left: 12px !important; right: 12px !important; }
 }
 
 /* ============================
-   Controls / Table container
-   ============================ */
+  Controls / Table container
+  ============================ */
 #controls {
-  margin: 20px 0;
-  display: flex;
-  gap: 10px;
-  align-items: center;
+margin: 20px 0;
+display: flex;
+gap: 10px;
+align-items: center;
 }
 #controls { display: inline-block; text-align: left; margin-bottom: 20px; }
 
 button {
-  padding: 6px 12px;
-  cursor: pointer;
-  border: 1px solid #444;
-  background: #e6e6e6;
-  transition: background 0.15s ease;
+padding: 6px 12px;
+cursor: pointer;
+border: 1px solid #444;
+background: #e6e6e6;
+transition: background 0.15s ease;
 }
 button:hover { background: #dcdcdc; }
 
 /* ============================
-   Table styling
-   ============================ */
+  Table styling
+  ============================ */
 #tableContainer { text-align: center; }
 
 table {
-  width: 100%;
-  border-collapse: collapse;
-  background: #fff;
-  color: #222;
-  margin-top: 20px;
+width: 100%;
+border-collapse: collapse;
+background: var(--panel-bg);
+color: var(--text);
+margin-top: 20px;
 }
 table th {
-  background: #2f4f4f;
-  color: #fff;
-  padding: 8px;
-  text-align: left;
+background: #2f4f4f;
+color: #fff;
+padding: 8px;
+text-align: left;
 }
 table td {
-  padding: 8px 12px;
-  border: 1px solid #d0d0d0;
+padding: 8px 12px;
+border: 1px solid #d0d0d0;
 }
 
 /* ============================
-   Reset button (below tables, above graph)
-   ============================ */
+  Reset button (below tables, above graph)
+  ============================ */
 .graphResetButton {
-  display: flex;
-  justify-content: center;
-  margin: 12px 0;
+display: flex;
+justify-content: center;
+margin: 12px 0;
 }
 .graphResetButton button {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid rgba(0,0,0,0.12);
-  background: #fff;
-  cursor: pointer;
-  font-weight: 700;
+padding: 8px 14px;
+border-radius: 8px;
+border: 1px solid rgba(0,0,0,0.12);
+background: #fff;
+cursor: pointer;
+font-weight: 700;
 }
 .graphResetButton button:hover { filter: brightness(0.98); }
 
 /* ============================
-   Graph area + wrapper
-   ============================ */
-#graphArea { margin-top: 8px; }
-#graphArea svg text { fill: #333; }
+  Graph area + wrapper
+  ============================ */
+#graphArea {
+  margin-top: 12px;
+
+  /* Visual separation */
+  background: linear-gradient(
+    180deg,
+    rgba(0,0,0,0.03),
+    rgba(0,0,0,0.06)
+  );
+  border-radius: 14px;
+
+  /* THIS creates non-interactive side zones */
+  padding: 0 48px 16px 48px;
+
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.06),
+    0 6px 18px rgba(0,0,0,0.08);
+}
 
 .graphWrapper {
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  max-height: calc(100vh - 220px);
-  overflow: hidden; /* panning via transform */
-  padding: 8px;
-  padding-top: 12px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.02);
+  max-height: calc(100vh - 260px);
+
+  overflow: hidden; /* pan via transform only */
+  padding: 12px;
+
+  border-radius: 10px;
+
+  /* Strong visual contrast */
+  background: var(--panel-bg);
+
+  transition: background 160ms ease;
 }
 
 .graphWrapper .graphViewport {
-  width: 100%;
-  height: 100%;
-  display: block;
+width: 100%;
+height: 100%;
+display: block;
 }
 
 .graphWrapper svg.graphSVG {
-  width: 100%;
-  height: auto;
-  display: block;
-  user-select: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
+width: 100%;
+height: auto;
+display: block;
+user-select: none;
+-webkit-user-select: none;
+-ms-user-select: none;
 }
 
+/* ====== SVG line styling (ensure lines are visible) ====== */
+.graph-edge { stroke: var(--line-color, #444); stroke-width: 1.6; stroke-linecap: round; }
+.graph-edge-raw { stroke: var(--raw-edge-color, #333); stroke-width: 2.6; stroke-linecap: round; }
+.graph-spine-vertical, .graph-spine-horizontal { stroke: var(--spine-color, #666); stroke-width: 2; stroke-linecap: round; }
+.bypass-connector, .bypass-to-spine { stroke: var(--line-color, #444); stroke-width: 1.4; stroke-linecap: butt; }
+.node-to-helper, .node-to-anchor { stroke: var(--line-color, #444); stroke-width: 1.2; stroke-linecap: round; }
+.helper-dot circle, .bypass-dot circle { vector-effect: non-scaling-stroke; }
+
 /* ============================
-   SVG text & node styling — robust centering for numbers
-   ============================ */
+  SVG text & node styling — robust centering for numbers
+  ============================ */
 
 /* Node labels (above nodes) */
 .graphSVG text.nodeLabel {
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.2px;
-  text-anchor: middle;
-  paint-order: stroke;
-  stroke-width: 0.6px;
-  stroke-linejoin: round;
-  fill: currentColor;
+font-family: "Segoe UI", Roboto, Arial, sans-serif;
+font-size: 13px;
+font-weight: 700;
+letter-spacing: 0.2px;
+text-anchor: middle;
+paint-order: stroke;
+stroke-width: var(--label-text-stroke-width);
+stroke-linejoin: round;
+fill: var(--label-text-fill);
 }
 
-/* Numbers inside nodes: multiple techniques combined for reliable centering
-   - horizontal centering via text-anchor: middle
-   - vertical centering via dominant-baseline and alignment-baseline
-   - small transform nudge to correct font metric differences
-   - use transform-box and transform-origin so translateY affects glyphs correctly
-*/
+/* Numbers inside nodes: multiple techniques combined for reliable centering */
 .graphSVG text.nodeNumber {
-  font-family: "Segoe UI", Roboto, Arial, sans-serif;
-  font-size: 13px;
-  font-weight: 700;
-  text-anchor: middle;               /* horizontal centering */
-  dominant-baseline: middle;         /* vertical centering (SVG2) */
-  alignment-baseline: central;       /* fallback for some engines */
-  baseline-shift: 0;                 /* ensure no extra shift */
-  paint-order: stroke;
-  stroke-width: 0.6px;
-  stroke-linejoin: round;
-  fill: currentColor;
+font-family: "Segoe UI", Roboto, Arial, sans-serif;
+font-size: 13px;
+font-weight: 700;
+text-anchor: middle;               /* horizontal centering */
+dominant-baseline: middle;         /* vertical centering (SVG2) */
+alignment-baseline: central;       /* fallback for some engines */
+baseline-shift: 0;                 /* ensure no extra shift */
+paint-order: stroke;
+stroke-width: 0.6px;
+stroke-linejoin: round;
+fill: var(--label-text-fill);
 
-  /* transform-based nudge — very small, tweak if needed */
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: translateY(0.08em);     /* tiny nudge to visually center; adjust to 0.00–0.18em if needed */
+/* transform-based nudge — very small, tweak if needed */
+transform-box: fill-box;
+transform-origin: center;
+transform: translateY(0.08em);     /* tiny nudge to visually center; adjust if needed */
 }
-
-/* If your renderGraph sets dy on the <text> element, the dy will combine with this transform.
-   If you prefer to rely on dy instead, set transform: none; and use dy=".35em" in the markup. */
 
 /* Ensure stroke doesn't push glyphs off visually */
-.graphSVG text { stroke-width: 0.6px; paint-order: stroke; }
+.graphSVG text { paint-order: stroke; }
 
 /* Circles and rects should not scale stroke with transforms */
 .graphSVG circle,
 .graphSVG rect {
-  vector-effect: non-scaling-stroke;
+vector-effect: non-scaling-stroke;
 }
 
 /* Cursor styles for panning */
@@ -294,40 +347,42 @@ table td {
 .graphWrapper::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 6px; }
 
 /* ============================
-   Dark mode
-   ============================ */
+  Dark mode body-level tweaks
+  ============================ */
 body.dark {
-  background: #121212;
-  color: #ddd;
+background: #121212;
+color: #ddd;
 }
 body.dark button { background: #333; color: #eee; border-color: #555; }
 body.dark table { background: #1f1f1f; color: #ddd; }
 body.dark table th { background: #2b2b2b; color: #fff; }
 body.dark table td { border: 1px solid #333; }
-body.dark #graphArea svg text { fill: #ddd; }
+
+/* Make sure any fallback text color in #graphArea is neutral */
+#graphArea svg text { fill: var(--label-text-fill); }
 
 /* ============================
-   Toasts & misc
-   ============================ */
+  Toasts & misc
+  ============================ */
 #toastContainer {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  z-index: 9999;
+position: fixed;
+bottom: 20px;
+right: 20px;
+display: flex;
+flex-direction: column;
+gap: 10px;
+z-index: 9999;
 }
 .toast {
-  padding: 12px 18px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: white;
-  background: rgba(0,0,0,0.85);
-  opacity: 0;
-  transform: translateY(20px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+padding: 12px 18px;
+border-radius: 6px;
+font-size: 14px;
+font-weight: 600;
+color: white;
+background: rgba(0,0,0,0.85);
+opacity: 0;
+transform: translateY(20px);
+transition: opacity 0.25s ease, transform 0.25s ease;
 }
 .toast.show { opacity: 1; transform: translateY(0); }
 
@@ -336,5 +391,5 @@ body.dark #graphArea svg text { fill: #ddd; }
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+* { transition: none !important; }
 }
