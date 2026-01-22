@@ -862,8 +862,6 @@ function renderGraph(nodes, links, rootItem) {
     GRAPH_CONTENT_PAD * 2 +
     bypassExtraTop;
 
-  const defaultLineColor = isDarkMode() ? '#dcdcdc' : '#444';
-
   let inner = '';
 
   // ---------------------------------
@@ -1059,7 +1057,7 @@ function renderGraph(nodes, links, rootItem) {
       <line
         x1="${from.x}" y1="${y}"
         x2="${to.x}"   y2="${y}"
-        stroke="${defaultLineColor}"
+        stroke="var(--line-color)"
         stroke-width="1.6" />
       <polygon
         points="
@@ -1157,7 +1155,7 @@ function renderGraph(nodes, links, rootItem) {
           y1="${d.y}"
           x2="${spine.x}"
           y2="${spine.y}"
-          stroke="${defaultLineColor}"
+          stroke="var(--line-color)"
           stroke-width="1.6"
         />
       `;
@@ -1222,7 +1220,7 @@ function renderGraph(nodes, links, rootItem) {
           y1="${a.y}"
           x2="${b.x}"
           y2="${b.y}"
-          stroke="${defaultLineColor}"
+          stroke="var(--line-color)"
           stroke-width="1.6"
         />
       `;
