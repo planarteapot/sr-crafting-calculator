@@ -872,6 +872,11 @@ function renderGraph(nodes, links, rootItem) {
   const rightHelpers = [];
   const leftHelpers = [];
 
+    // ---------------------------------
+    // Collect bypass dot positions
+    // ---------------------------------
+    const bypassDots = []; // { x, y, depth, side }
+
   for (const node of nodes) {
     const minDepth = Math.min(...nodes.map(n=>n.depth));
     const maxDepth = Math.max(...nodes.map(n=>n.depth));
@@ -1101,11 +1106,6 @@ function renderGraph(nodes, links, rootItem) {
 
   const verticalUnitOut = getVerticalUnit(byX);
   const verticalUnitIn  = getVerticalUnit(byXInput);
-
-  // ---------------------------------
-  // Collect bypass dot positions
-  // ---------------------------------
-  const bypassDots = []; // { x, y, depth, side }
   
   // Output-side bypass helper dots
   for (const depth of bypassOutputDepths) {
