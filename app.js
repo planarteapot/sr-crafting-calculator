@@ -1023,32 +1023,6 @@ function renderGraph(nodes, links, rootItem) {
   }
 
   // ---------------------------------
-  // Horizontal bypass rail (dot-to-dot only)
-  // ---------------------------------
-  const topBypassDots = bypassDots
-    .slice()
-    .sort((a, b) => a.depth - b.depth);
-
-  for (let i = 0; i < topBypassDots.length - 1; i++) {
-    const a = topBypassDots[i];
-    const b = topBypassDots[i + 1];
-
-    // never connect within the same column
-    if (a.depth === b.depth) continue;
-
-    inner += `
-      <line
-        x1="${a.x}"
-        y1="${a.y}"
-        x2="${b.x}"
-        y2="${b.y}"
-        stroke="${defaultLineColor}"
-        stroke-width="1.6"
-      />
-    `;
-  }
-
-  // ---------------------------------
   // HORIZONTAL TOP CONNECTIONS (RIGHT → LEFT)
   // ---------------------------------
   const rightTopByDepth = {};
@@ -1181,6 +1155,32 @@ function renderGraph(nodes, links, rootItem) {
       />
     `;
   }
+
+    // ---------------------------------
+    // Horizontal bypass rail (dot-to-dot only)
+    // ---------------------------------
+    const topBypassDots = bypassDots
+      .slice()
+      .sort((a, b) => a.depth - b.depth);
+
+    for (let i = 0; i < topBypassDots.length - 1; i++) {
+      const a = topBypassDots[i];
+      const b = topBypassDots[i + 1];
+
+      // never connect within the same column
+      if (a.depth === b.depth) continue;
+
+      inner += `
+        <line
+          x1="${a.x}"
+          y1="${a.y}"
+          x2="${b.x}"
+          y2="${b.y}"
+          stroke="${defaultLineColor}"
+          stroke-width="1.6"
+        />
+      `;
+    }
 
   // ---------------------------------
   // Nodes
